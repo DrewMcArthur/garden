@@ -1,12 +1,11 @@
 #!/bin/bash
 
-if [[ -z .quartz ]]; then 
+if [[ ! -d .quartz ]]; then
     git clone git@github.com:jackyzha0/quartz.git .quartz --depth=1
     cd .quartz
     bun install
     rm -rf content
     ln -s ../vault content
-    ln -s ../public public
     ln -f ../quartz.config.ts quartz.config.ts
     ln -f ../quartz.layout.ts quartz.layout.ts
     cat tsconfig.json | jq '.compilerOptions.paths = {"@quartz/*": ["./quartz/*"]}' > tsconfig.json.tmp
