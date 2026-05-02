@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 if [[ -z .quartz ]]; then 
     git clone git@github.com:jackyzha0/quartz.git .quartz --depth=1
