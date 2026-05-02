@@ -8,7 +8,7 @@ const theme: Theme = {
     header: "Lato",
     body: {
       name: "Lato",
-      weights: [300, 400, 500],
+      weights: [300, 400, 700],
       includeItalic: true,
     },
     code: {

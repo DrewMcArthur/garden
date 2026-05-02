@@ -1,9 +1,6 @@
-[working-directory: ".quartz"]
-quartz *args:
-    @bun quartz/bootstrap-cli.mjs {{args}}
+#!/bin/sh
 
-[script]
-quartz-init:
+if [[ -z .quartz ]]; then 
     git clone git@github.com:jackyzha0/quartz.git .quartz --depth=1
     cd .quartz
     bun install
@@ -17,3 +14,6 @@ quartz-init:
     cd ..
     rm -rf public
     ln -s .quartz/public public
+else
+    echo "Dir already exists. Goodbye!"
+fi
