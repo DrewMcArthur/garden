@@ -1,5 +1,15 @@
 {
+    "name": "digitalgarden",
+    "private": true,
+    "version": "0.1.0",
+    "packageManager": "pnpm",
+    "engines": {
+        "node": ">=22"
+    },
     "scripts": {
-        "build:serve": "cd .quartz && npx quartz build --serve"
+        "dev": "cd .quartz && npx quartz build --serve",
+        "build": "cd .quartz && npx quartz build",
+        "clean": "rm -rf .quartz/public",
+        "typecheck": ".quartz/node_modules/.bin/tsc -p tsconfig.json --noEmit"
     }
 }
