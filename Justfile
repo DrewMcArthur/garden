@@ -1,11 +1,6 @@
-
 [working-directory: ".quartz"]
 quartz *args:
     @bun quartz/bootstrap-cli.mjs {{args}}
-
-[working-directory: ".quartz"]
-build:
-    @bun quartz/bootstrap-cli.mjs build --serve
 
 [script]
 quartz-init:
