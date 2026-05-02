@@ -1,0 +1,5 @@
+{
+    "scripts": {
+        "build:serve": "cd .quartz && npx quartz build --serve"
+    }
+}

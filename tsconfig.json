@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "typeRoots": ["./.quartz/node_modules/@types"],
+    "rootDirs": [".", ".quartz"],
+    "paths": {
+      "@quartz/*": ["./.quartz/quartz/*"]
+    }
+  },
+  "include": ["quartz.config.ts", "quartz.layout.ts", "quartz.types.d.ts"],
+  "exclude": ["node_modules", ".quartz/node_modules", "public"]
+}
