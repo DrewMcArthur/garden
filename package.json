@@ -11,5 +11,8 @@
         "build": "cd .quartz && npx quartz build",
         "clean": "rm -rf .quartz/public",
         "typecheck": ".quartz/node_modules/.bin/tsc -p tsconfig.json --noEmit"
+    },
+    "devDependencies": {
+        "wrangler": "^4.87.0"
     }
 }
