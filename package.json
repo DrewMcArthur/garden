@@ -2,7 +2,7 @@
     "name": "digitalgarden",
     "private": true,
     "version": "0.1.0",
-    "packageManager": "pnpm@>=11.0.3",
+    "packageManager": "pnpm@11.0.3",
     "engines": {
         "node": ">=22"
     },
