@@ -1,6 +1,6 @@
 ---
 title: Welcome
 ---
-This site is my attempt at [[Evergreen Notes]].  
+This site is my attempt at [[Evergreen Notes]], or [[Digital Gardening]].
 
 These notes are written with [[Obsidian]], and get pushed automatically to this site using [[Quartz]].
