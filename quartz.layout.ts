@@ -26,7 +26,7 @@ export const defaultContentPageLayout: PageLayout = {
     Component.ContentMeta(),
     Component.TagList(),
   ],
-  left: [],
+  left: [Component.Darkmode()],
   right: [
     Component.Flex({
       direction: "column",

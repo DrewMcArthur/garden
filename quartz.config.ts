@@ -1,6 +1,6 @@
-import type { QuartzConfig } from "@quartz/cfg";
-import type { Theme } from "@quartz/util/theme";
-import * as Plugin from "@quartz/plugins";
+import type { QuartzConfig } from "@quartz/cfg"
+import type { Theme } from "@quartz/util/theme"
+import * as Plugin from "@quartz/plugins"
 
 const theme: Theme = {
   typography: {
@@ -37,13 +37,13 @@ const theme: Theme = {
       darkgray: "#DBD3CA",
       dark: "#F0E6FA",
       secondary: "#DBD3CA",
-      tertiary: "#807A75",
-      highlight: "rgba(219, 211, 202, 0.32)",
-      textHighlight: "#8a7a1288",
+      tertiary: "#A09A95",
+      highlight: "rgba(219, 211, 202, 0.20)",
+      textHighlight: "#8a7a12a4",
     },
   },
   fontOrigin: "googleFonts",
-};
+}
 
 const config: QuartzConfig = {
   configuration: {
@@ -94,6 +94,6 @@ const config: QuartzConfig = {
       Plugin.CustomOgImages(),
     ],
   },
-};
+}
 
-export default config;
+export default config
