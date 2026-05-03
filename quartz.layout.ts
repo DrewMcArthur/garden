@@ -1,5 +1,5 @@
-import { PageLayout, SharedLayout } from "./quartz/cfg";
-import * as Component from "./quartz/components";
+import { PageLayout, SharedLayout } from "./quartz/cfg"
+import * as Component from "./quartz/components"
 
 // components shared across all pages
 export const sharedPageComponents: SharedLayout = {
@@ -12,7 +12,7 @@ export const sharedPageComponents: SharedLayout = {
       GitHub: "https://github.com/drewmcarthur/garden",
     },
   }),
-};
+}
 
 // components for pages that display a single page (e.g. a single note)
 export const defaultContentPageLayout: PageLayout = {
@@ -29,17 +29,23 @@ export const defaultContentPageLayout: PageLayout = {
   left: [],
   right: [
     Component.Flex({
+      direction: "column",
       components: [
         {
-          Component: Component.Search(),
           grow: true,
+          Component: Component.Search(),
+          align: "stretch",
         },
+        {
+          Component: Component.DesktopOnly(Component.TableOfContents()),
+          grow: true,
+          align: "stretch",
+        },
+        { Component: Component.Graph(), grow: true, align: "stretch", justify: "end" },
       ],
     }),
-    Component.DesktopOnly(Component.TableOfContents()),
-    Component.Graph(),
   ],
-};
+}
 
 // components for pages that display lists of pages  (e.g. tags or folders)
 export const defaultListPageLayout: PageLayout = {
@@ -63,4 +69,4 @@ export const defaultListPageLayout: PageLayout = {
     Component.Explorer(),
   ],
   right: [],
-};
+}
