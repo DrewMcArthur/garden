@@ -16,6 +16,12 @@ const defaultOptions: BacklinksOptions = {
 export default ((opts?: Partial<BacklinksOptions>) => {
   const options: BacklinksOptions = { ...defaultOptions, ...opts }
   const { OverflowList, overflowListAfterDOMLoaded } = OverflowListFactory()
+  const truncateExcerpt = (text?: string, maxLength = 70) => {
+    if (!text) return null
+    const normalized = text.trim().replace(/\s+/g, " ")
+    if (normalized.length <= maxLength) return normalized
+    return `${normalized.slice(0, maxLength).trimEnd()}…`
+  }
 
   const Backlinks: QuartzComponent = ({
     fileData,
@@ -33,13 +39,18 @@ export default ((opts?: Partial<BacklinksOptions>) => {
         <h3>{i18n(cfg.locale).components.backlinks.title}</h3>
         <OverflowList>
           {backlinkFiles.length > 0 ? (
-            backlinkFiles.map((f) => (
-              <li>
-                <a href={resolveRelative(fileData.slug!, f.slug!)} class="internal">
-                  {f.frontmatter?.title}
-                </a>
-              </li>
-            ))
+            backlinkFiles.map((f) => {
+              const title = f.frontmatter?.title ?? i18n(cfg.locale).propertyDefaults.title
+              const excerpt = truncateExcerpt(typeof f.description === "string" ? f.description : "")
+              return (
+                <li class="backlink-item">
+                  <a href={resolveRelative(fileData.slug!, f.slug!)} class="backlink-card">
+                    <span class="backlink-title">{title}</span>
+                    {excerpt && <p class="backlink-excerpt">{excerpt}</p>}
+                  </a>
+                </li>
+              )
+            })
           ) : (
             <li>{i18n(cfg.locale).components.backlinks.noBacklinksFound}</li>
           )}
