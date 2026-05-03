@@ -8,6 +8,7 @@ if [[ ! -d .quartz ]]; then
     ln -s ../vault content
     ln -f ../quartz.config.ts quartz.config.ts
     ln -f ../quartz.layout.ts quartz.layout.ts
+    ln -f ../icon.png quartz/static/icon.png
     cat tsconfig.json | jq '.compilerOptions.paths = {"@quartz/*": ["./quartz/*"]}' > tsconfig.json.tmp
     mv tsconfig.json.tmp tsconfig.json
     cd ..
