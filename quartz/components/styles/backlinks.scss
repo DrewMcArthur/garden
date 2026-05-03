@@ -4,12 +4,12 @@
   flex-direction: column;
 
   & > h3 {
-    font-size: 1rem;
+    font-size: 1.2rem;
     margin: 0;
   }
 
   & > ul.overflow {
-    list-style: none;
+    // list-style: none;
     padding: 0;
     margin: 0.5rem 0;
     max-height: calc(100% - 2rem);
