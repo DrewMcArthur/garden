@@ -29,7 +29,7 @@
     margin: 0.5rem 0;
     max-height: calc(100% - 2rem);
     overscroll-behavior: contain;
-    display: grid;
+    display: flex;
     gap: 0.7rem;
 
     & > li.backlink-item {
@@ -51,6 +51,7 @@
       text-decoration: none;
       color: var(--darkgray);
       max-width: 250px;
+      height: calc(100% - 0.65rem - 0.75rem - 2px);
 
       &:hover {
         border-color: var(--gray);
