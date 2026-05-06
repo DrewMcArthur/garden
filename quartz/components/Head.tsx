@@ -21,6 +21,12 @@ export default (() => {
       unescapeHTML(fileData.description?.trim() ?? i18n(cfg.locale).propertyDefaults.description)
 
     const { css, js, additionalHead } = externalResources
+    const atUri =
+      typeof fileData.atprotoUri === "string" && fileData.atprotoUri.trim().length > 0
+        ? fileData.atprotoUri.trim()
+        : typeof fileData.atUri === "string" && fileData.atUri.trim().length > 0
+          ? fileData.atUri.trim()
+          : undefined
 
     const url = new URL(`https://${cfg.baseUrl ?? "example.com"}`)
     const path = url.pathname as FullSlug
@@ -92,6 +98,12 @@ export default (() => {
         )}
 
         <link rel="icon" href={iconPath} />
+        {atUri && (
+          <>
+            <link rel="site.standard.document" href={atUri} />
+            <link rel="alternate" type="application/atproto" href={atUri} />
+          </>
+        )}
         <meta name="description" content={description} />
         <meta name="generator" content="Quartz" />
 

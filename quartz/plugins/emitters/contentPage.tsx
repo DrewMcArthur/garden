@@ -13,7 +13,7 @@ import { write } from "./helpers"
 import { BuildCtx } from "../../util/ctx"
 import { Node } from "unist"
 import { StaticResources } from "../../util/resources"
-import { QuartzPluginData } from "../vfile"
+import { ProcessedContent, QuartzPluginData } from "../vfile"
 
 const CONSTELLATION_BASE = "https://constellation.microcosm.blue"
 const HANDLE_RESOLVER_BASE = "https://public.api.bsky.app"
@@ -86,6 +86,14 @@ function sourceFromCollectionAndPath(collection: string, path: string): string {
 
 function makeAtUri(did: string, collection: string, rkey: string): string {
   return `at://${did}/${collection}/${rkey}`
+}
+
+function getAtUri(fileData: QuartzPluginData): string | undefined {
+  const atUri = fileData.atprotoUri ?? fileData.atUri
+  if (typeof atUri !== "string") return undefined
+
+  const trimmed = atUri.trim()
+  return trimmed.length > 0 ? trimmed : undefined
 }
 
 function hrefForRecord(record: ConstellationRecord): string {
@@ -224,7 +232,10 @@ function parseSourceSpecs(payload: SourceCountsResponse): string[] {
 }
 
 function normalizeAtprotoBacklinksConfig(cfg?: AtprotoBacklinksConfiguration): Required<
-  Pick<AtprotoBacklinksConfiguration, "repo" | "collection" | "sourceCollections" | "limit">
+  Pick<
+    AtprotoBacklinksConfiguration,
+    "repo" | "collection" | "sourceCollections" | "limit" | "emitHttpHeader"
+  >
 > & {
   enabled: boolean
 } {
@@ -234,6 +245,7 @@ function normalizeAtprotoBacklinksConfig(cfg?: AtprotoBacklinksConfiguration): R
     collection: cfg?.collection ?? process.env.QUARTZ_ATPROTO_COLLECTION ?? DEFAULT_REPO_COLLECTION,
     sourceCollections: cfg?.sourceCollections ?? [...DEFAULT_SOURCE_COLLECTIONS],
     limit: cfg?.limit ?? DEFAULT_BACKLINK_LIMIT,
+    emitHttpHeader: cfg?.emitHttpHeader ?? false,
   }
 }
 
@@ -472,16 +484,12 @@ function pageUrlCandidates(ctx: BuildCtx, fileData: QuartzPluginData): string[] 
 async function hydrateAtprotoBacklinks(ctx: BuildCtx, fileData: QuartzPluginData) {
   try {
     const atprotoCfg = normalizeAtprotoBacklinksConfig(ctx.cfg.configuration.atprotoBacklinks)
-    if (!atprotoCfg.enabled) {
-      fileData.atprotoBacklinks = []
-      fileData.atprotoUri = undefined
-      return
-    }
 
     const rkey = getFrontmatterString(fileData, "rkey")
     if (!rkey) {
       fileData.atprotoBacklinks = []
       fileData.atprotoUri = undefined
+      fileData.atUri = undefined
       return
     }
 
@@ -495,6 +503,12 @@ async function hydrateAtprotoBacklinks(ctx: BuildCtx, fileData: QuartzPluginData
     const repoDid = await resolveRepoDid(repoHint)
     const subject = rkey.startsWith("at://") ? rkey : makeAtUri(repoDid, collection, rkey)
     fileData.atprotoUri = subject
+    fileData.atUri = subject
+
+    if (!atprotoCfg.enabled) {
+      fileData.atprotoBacklinks = []
+      return
+    }
 
     const targets: BacklinkTarget[] = [{ value: subject, kind: "at-uri" }]
     for (const url of pageUrlCandidates(ctx, fileData)) {
@@ -519,8 +533,57 @@ async function hydrateAtprotoBacklinks(ctx: BuildCtx, fileData: QuartzPluginData
     console.warn(styleText("yellow", `[ContentPage] failed to hydrate ATProto backlinks`))
     console.warn(err)
     fileData.atprotoBacklinks = []
-    fileData.atprotoUri = undefined
+    if (!getAtUri(fileData)) {
+      fileData.atprotoUri = undefined
+      fileData.atUri = undefined
+    }
   }
+}
+
+function headerPathsForSlug(slug: FullSlug): string[] {
+  const simpleSlug = simplifySlug(slug)
+  const paths = new Set<string>()
+
+  if (simpleSlug === "/") {
+    paths.add("/")
+  } else {
+    paths.add(`/${simpleSlug}`)
+    paths.add(`/${simpleSlug}/`)
+  }
+  paths.add(`/${slug}.html`)
+
+  return [...paths]
+}
+
+function sanitizeHeaderValue(value: string): string {
+  return value.replace(/[\r\n]/g, "")
+}
+
+async function writeAtprotoHeaders(ctx: BuildCtx, content: ProcessedContent[]) {
+  const atprotoCfg = normalizeAtprotoBacklinksConfig(ctx.cfg.configuration.atprotoBacklinks)
+  if (!atprotoCfg.emitHttpHeader) {
+    return undefined
+  }
+
+  const blocks: string[] = []
+  for (const [, file] of content) {
+    const slug = file.data.slug!
+    if (slug.endsWith("/index") || slug.startsWith("tags/")) continue
+
+    const atUri = getAtUri(file.data)
+    if (!atUri) continue
+
+    for (const headerPath of headerPathsForSlug(slug)) {
+      blocks.push(`${headerPath}\n  Atproto-Uri: ${sanitizeHeaderValue(atUri)}`)
+    }
+  }
+
+  return write({
+    ctx,
+    slug: "_headers" as FullSlug,
+    ext: "",
+    content: blocks.length > 0 ? `${blocks.join("\n\n")}\n` : "",
+  })
 }
 
 async function processContent(
@@ -605,6 +668,11 @@ export const ContentPage: QuartzEmitterPlugin<Partial<FullPageLayout>> = (userOp
           ),
         )
       }
+
+      const headersPath = await writeAtprotoHeaders(ctx, content)
+      if (headersPath) {
+        yield headersPath
+      }
     },
     async *partialEmit(ctx, content, resources, changeEvents) {
       const allFiles = content.map((c) => c[1].data)
@@ -626,6 +694,11 @@ export const ContentPage: QuartzEmitterPlugin<Partial<FullPageLayout>> = (userOp
 
         yield processContent(ctx, tree, file.data, allFiles, opts, resources)
       }
+
+      const headersPath = await writeAtprotoHeaders(ctx, content)
+      if (headersPath) {
+        yield headersPath
+      }
     },
   }
 }
@@ -633,6 +706,7 @@ export const ContentPage: QuartzEmitterPlugin<Partial<FullPageLayout>> = (userOp
 declare module "vfile" {
   interface DataMap {
     atprotoBacklinks: AtprotoBacklink[]
+    atUri?: string
     atprotoUri?: string
   }
 }

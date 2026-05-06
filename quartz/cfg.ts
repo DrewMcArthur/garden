@@ -63,6 +63,8 @@ export interface AtprotoBacklinksConfiguration {
   repo: string
   /** Collection where notes are published */
   collection?: string
+  /** Emit static host header rules with `Atproto-Uri` for generated note pages */
+  emitHttpHeader?: boolean
   /** Which source collections to include as backlinks */
   sourceCollections?: string[]
   /** Max records fetched per source type */

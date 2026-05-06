@@ -58,6 +58,7 @@ const config: QuartzConfig = {
       enabled: true,
       repo: "did:plc:s7xw6pqvc72ha73bogjqp4m3",
       collection: "site.standard.document",
+      emitHttpHeader: true,
       sourceCollections: ["site.standard.document", "app.bsky.feed.post"],
       limit: 12,
     },
