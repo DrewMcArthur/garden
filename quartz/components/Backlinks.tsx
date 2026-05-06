@@ -41,7 +41,9 @@ export default ((opts?: Partial<BacklinksOptions>) => {
           {backlinkFiles.length > 0 ? (
             backlinkFiles.map((f) => {
               const title = f.frontmatter?.title ?? i18n(cfg.locale).propertyDefaults.title
-              const excerpt = truncateExcerpt(typeof f.description === "string" ? f.description : "")
+              const excerpt = truncateExcerpt(
+                typeof f.description === "string" ? f.description : "",
+              )
               return (
                 <li class="backlink-item">
                   <a href={resolveRelative(fileData.slug!, f.slug!)} class="backlink-card">
