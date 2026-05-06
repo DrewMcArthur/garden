@@ -1,5 +1,7 @@
 ---
 title: Welcome
+publish: true
+rkey: 3ml5oeuvgf72z
 ---
 This site is my attempt at [[Evergreen Notes]], or [[Digital Gardening]].
 
