@@ -20,6 +20,6 @@
       "@quartz/*": ["./quartz/*"]
     }
   },
-  "include": ["**/*.ts", "**/*.tsx", "./package.json"],
+  "include": ["**/*.d.ts", "**/*.ts", "**/*.tsx", "./package.json"],
   "exclude": ["build/**/*.d.ts"]
 }
