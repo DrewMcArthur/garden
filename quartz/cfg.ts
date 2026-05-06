@@ -56,6 +56,19 @@ export type Analytics =
       host?: string
     }
 
+export interface AtprotoBacklinksConfiguration {
+  /** Toggle fetching ATProto backlinks during build */
+  enabled?: boolean
+  /** Repo DID or handle used to build note subjects from frontmatter `rkey` */
+  repo: string
+  /** Collection where notes are published */
+  collection?: string
+  /** Which source collections to include as backlinks */
+  sourceCollections?: string[]
+  /** Max records fetched per source type */
+  limit?: number
+}
+
 export interface GlobalConfiguration {
   pageTitle: string
   pageTitleSuffix?: string
@@ -83,6 +96,8 @@ export interface GlobalConfiguration {
    * Region Codes: https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2
    */
   locale: ValidLocale
+  /** Optional ATProto backlink enrichment for notes keyed by frontmatter `rkey` */
+  atprotoBacklinks?: AtprotoBacklinksConfiguration
 }
 
 export interface QuartzConfig {

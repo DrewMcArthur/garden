@@ -54,6 +54,13 @@ const config: QuartzConfig = {
     ignorePatterns: [],
     locale: "en-US",
     defaultDateType: "modified",
+    atprotoBacklinks: {
+      enabled: true,
+      repo: "did:plc:s7xw6pqvc72ha73bogjqp4m3",
+      collection: "site.standard.document",
+      sourceCollections: ["site.standard.document", "app.bsky.feed.post"],
+      limit: 12,
+    },
     theme,
   },
   plugins: {
