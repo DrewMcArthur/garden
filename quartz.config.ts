@@ -48,6 +48,7 @@ const theme: Theme = {
 const config: QuartzConfig = {
   configuration: {
     pageTitle: "notes.drewmca.net",
+    baseUrl: "notes.drewmca.net",
     enableSPA: true,
     enablePopovers: false,
     analytics: null,

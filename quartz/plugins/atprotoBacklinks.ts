@@ -71,6 +71,10 @@ type AtprotoLinkTarget = {
   dates?: QuartzPluginData["dates"]
 }
 
+type AtprotoRenderOptions = {
+  internalHosts: Set<string>
+}
+
 type DiscoveredDidReason = "did-not-allowed" | "unsupported-collection"
 
 type DiscoveredDidRecord = {
@@ -936,7 +940,55 @@ function leafletFacetHasCode(features: Array<Record<string, unknown>>): boolean 
   return features.some((feature) => feature.$type === "pub.leaflet.richtext.facet#code")
 }
 
-function renderLeafletText(plaintext: string, facets: unknown): ElementContent[] {
+function hostFromConfigValue(value?: string): string | undefined {
+  if (!value || value.includes(" ")) return undefined
+
+  try {
+    return new URL(value.includes("://") ? value : `https://${value}`).hostname
+  } catch {
+    return undefined
+  }
+}
+
+function renderOptionsForCtx(ctx: BuildCtx): AtprotoRenderOptions {
+  const hosts = new Set<string>()
+  const baseUrlHost = hostFromConfigValue(ctx.cfg.configuration.baseUrl)
+  if (baseUrlHost) hosts.add(baseUrlHost)
+  return { internalHosts: hosts }
+}
+
+function internalHrefForSiteUrl(rawHref: string, options: AtprotoRenderOptions) {
+  try {
+    const url = new URL(rawHref)
+    if (url.protocol !== "http:" && url.protocol !== "https:") return undefined
+    if (!options.internalHosts.has(url.hostname)) return undefined
+
+    const pathname = url.pathname === "/" ? "/" : url.pathname.replace(/\/$/, "")
+    return `${pathname}${url.search}${url.hash}`
+  } catch {
+    return undefined
+  }
+}
+
+function linkPropertiesForHref(href: string, options: AtprotoRenderOptions) {
+  const internalHref = internalHrefForSiteUrl(href, options)
+  if (internalHref) {
+    const slugPath = decodeURIComponent(internalHref.split(/[?#]/, 1)[0]).replace(/^\/+/, "")
+    return {
+      href: internalHref,
+      className: ["internal"],
+      "data-slug": simplifySlug((slugPath || "index") as FullSlug),
+    }
+  }
+
+  return { href, target: "_blank", rel: ["noopener", "noreferrer"] }
+}
+
+function renderLeafletText(
+  plaintext: string,
+  facets: unknown,
+  options: AtprotoRenderOptions,
+): ElementContent[] {
   if (!Array.isArray(facets) || facets.length === 0) {
     return [textNode(plaintext)]
   }
@@ -985,9 +1037,7 @@ function renderLeafletText(plaintext: string, facets: unknown): ElementContent[]
     }
 
     if (href) {
-      segmentNode = element("a", { href, target: "_blank", rel: ["noopener", "noreferrer"] }, [
-        segmentNode,
-      ])
+      segmentNode = element("a", linkPropertiesForHref(href, options), [segmentNode])
     }
 
     children.push(segmentNode)
@@ -1026,16 +1076,22 @@ function leafletPlaintext(backlink: AtprotoBacklink): string | undefined {
   return blocks.length > 0 ? blocks.join("\n\n") : undefined
 }
 
-function renderLeafletCommentContent(backlink: AtprotoBacklink): ElementContent[] | undefined {
+function renderLeafletCommentContent(
+  backlink: AtprotoBacklink,
+  options: AtprotoRenderOptions,
+): ElementContent[] | undefined {
   if (backlink.collection !== "pub.leaflet.comment") return undefined
   const plaintext = backlink.commentRecord?.plaintext
   if (typeof plaintext !== "string" || plaintext.trim().length === 0) return undefined
 
-  return [paragraph(renderLeafletText(plaintext, backlink.commentRecord?.facets))]
+  return [paragraph(renderLeafletText(plaintext, backlink.commentRecord?.facets, options))]
 }
 
-function renderLeafletContent(backlink: AtprotoBacklink): ElementContent[] | undefined {
-  const commentContent = renderLeafletCommentContent(backlink)
+function renderLeafletContent(
+  backlink: AtprotoBacklink,
+  options: AtprotoRenderOptions,
+): ElementContent[] | undefined {
+  const commentContent = renderLeafletCommentContent(backlink, options)
   if (commentContent) return commentContent
 
   const content = backlink.documentRecord?.content as
@@ -1054,7 +1110,7 @@ function renderLeafletContent(backlink: AtprotoBacklink): ElementContent[] | und
       const block = (blockWrapper as { block?: Record<string, unknown> }).block
       const plaintext = block?.plaintext
       if (block?.$type === "pub.leaflet.blocks.text" && typeof plaintext === "string") {
-        children.push(paragraph(renderLeafletText(plaintext, block.facets)))
+        children.push(paragraph(renderLeafletText(plaintext, block.facets, options)))
       }
     }
   }
@@ -1099,7 +1155,11 @@ function linkTargetFromBacklink(backlink: AtprotoBacklink): AtprotoLinkTarget {
   }
 }
 
-function buildRecordTree(backlink: AtprotoBacklink, linkedPages: AtprotoLinkTarget[]): Root {
+function buildRecordTree(
+  backlink: AtprotoBacklink,
+  linkedPages: AtprotoLinkTarget[],
+  options: AtprotoRenderOptions,
+): Root {
   const description = backlinkDescription(backlink)
   const sourceLabel = backlink.targetKind === "url" ? "Linked via URL" : "Linked via at:// URI"
   const sourceParts = [
@@ -1107,7 +1167,7 @@ function buildRecordTree(backlink: AtprotoBacklink, linkedPages: AtprotoLinkTarg
     backlink.publicationName ?? backlink.actorDisplayName ?? backlink.actorHandle ?? backlink.did,
     sourceLabel,
   ].filter(Boolean)
-  const renderedContent = renderLeafletContent(backlink)
+  const renderedContent = renderLeafletContent(backlink, options)
   const children: ElementContent[] = renderedContent ?? [
     paragraph([textNode(description)], "atproto-record-text"),
   ]
@@ -1181,6 +1241,7 @@ function buildGeneratedContent(
   backlink: AtprotoBacklink,
   linkedPages: AtprotoLinkTarget[],
   contextPages: AtprotoLinkTarget[],
+  options: AtprotoRenderOptions,
 ): ProcessedContent {
   const slug = slugForBacklink(backlink)
   const linkedSlugs = linkedPages.map((page) => simplifySlug(page.slug))
@@ -1215,7 +1276,7 @@ function buildGeneratedContent(
     },
   }
 
-  return [buildRecordTree(backlink, linkedPages), { data } as ProcessedContent[1]]
+  return [buildRecordTree(backlink, linkedPages, options), { data } as ProcessedContent[1]]
 }
 
 export async function prepareAtprotoBacklinkContent(
@@ -1223,6 +1284,7 @@ export async function prepareAtprotoBacklinkContent(
   content: ProcessedContent[],
 ): Promise<ProcessedContent[]> {
   const atprotoCfg = normalizeAtprotoBacklinksConfig(ctx.cfg.configuration.atprotoBacklinks)
+  const renderOptions = renderOptionsForCtx(ctx)
   await Promise.all(content.map(([, file]) => hydrateAtprotoBacklinks(ctx, file.data)))
   const allowedDids = await readAllowedDids()
   const discoveredDidsReport = createDiscoveredDidsReport(allowedDids)
@@ -1458,6 +1520,7 @@ export async function prepareAtprotoBacklinkContent(
         backlink,
         sortedLinkedPages,
         sortedSourcePages.length > 0 ? sortedSourcePages : sortedLinkedPages,
+        renderOptions,
       )
     },
   )
