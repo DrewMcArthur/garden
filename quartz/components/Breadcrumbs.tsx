@@ -9,6 +9,11 @@ type CrumbData = {
   path: string
 }
 
+type CustomCrumbData = {
+  displayName: string
+  slug?: FullSlug
+}
+
 interface BreadcrumbOptions {
   /**
    * Symbol between crumbs
@@ -50,6 +55,28 @@ export default ((opts?: Partial<BreadcrumbOptions>) => {
     displayClass,
     ctx,
   }: QuartzComponentProps) => {
+    const customCrumbs = fileData.atprotoBreadcrumbs as CustomCrumbData[] | undefined
+    if (customCrumbs && customCrumbs.length > 0) {
+      const crumbs = customCrumbs.map((crumb, idx) => ({
+        displayName: idx === 0 ? options.rootName : crumb.displayName,
+        path: crumb.slug ? resolveRelative(fileData.slug!, crumb.slug) : "",
+      }))
+      if (!options.showCurrentPage) {
+        crumbs.pop()
+      }
+
+      return (
+        <nav class={classNames(displayClass, "breadcrumb-container")} aria-label="breadcrumbs">
+          {crumbs.map((crumb, index) => (
+            <div class="breadcrumb-element">
+              <a href={crumb.path}>{crumb.displayName}</a>
+              {index !== crumbs.length - 1 && <p>{` ${options.spacerSymbol} `}</p>}
+            </div>
+          ))}
+        </nav>
+      )
+    }
+
     const trie = (ctx.trie ??= trieFromAllFiles(allFiles))
     const slugParts = fileData.slug!.split("/")
     const pathNodes = trie.ancestryChain(slugParts)

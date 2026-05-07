@@ -1,6 +1,6 @@
 import { QuartzComponent, QuartzComponentConstructor, QuartzComponentProps } from "./types"
 import style from "./styles/backlinks.scss"
-import { resolveRelative, simplifySlug } from "../util/path"
+import { FullSlug, resolveRelative, simplifySlug } from "../util/path"
 import { i18n } from "../i18n"
 import { classNames } from "../util/lang"
 import OverflowListFactory from "./OverflowList"
@@ -12,6 +12,7 @@ type AtprotoBacklink = {
   uri: string
   targetKind: "at-uri" | "url"
   href: string
+  internalSlug?: FullSlug
   publicationName?: string
   publicationUrl?: string
   documentTitle?: string
@@ -48,7 +49,9 @@ export default ((opts?: Partial<BacklinksOptions>) => {
     cfg,
   }: QuartzComponentProps) => {
     const slug = simplifySlug(fileData.slug!)
-    const backlinkFiles = allFiles.filter((file) => file.links?.includes(slug))
+    const backlinkFiles = allFiles.filter(
+      (file) => !file.atprotoGeneratedRecord && file.links?.includes(slug),
+    )
     const internalBacklinkRkeys = new Set(
       backlinkFiles
         .map((file) => file.frontmatter?.rkey)
@@ -120,10 +123,14 @@ export default ((opts?: Partial<BacklinksOptions>) => {
               {publicationBacklinks.map((backlink) => (
                 <li class="backlink-item">
                   <a
-                    href={backlink.href}
+                    href={
+                      backlink.internalSlug
+                        ? resolveRelative(fileData.slug!, backlink.internalSlug)
+                        : backlink.href
+                    }
                     class="backlink-card external-backlink"
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    target={backlink.internalSlug ? undefined : "_blank"}
+                    rel={backlink.internalSlug ? undefined : "noopener noreferrer"}
                   >
                     <span class="backlink-title">
                       {backlink.documentTitle ?? backlink.publicationName ?? "Untitled document"}
@@ -151,10 +158,14 @@ export default ((opts?: Partial<BacklinksOptions>) => {
               {blueskyBacklinks.map((backlink) => (
                 <li class="backlink-item">
                   <a
-                    href={backlink.href}
+                    href={
+                      backlink.internalSlug
+                        ? resolveRelative(fileData.slug!, backlink.internalSlug)
+                        : backlink.href
+                    }
                     class="backlink-card external-backlink"
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    target={backlink.internalSlug ? undefined : "_blank"}
+                    rel={backlink.internalSlug ? undefined : "noopener noreferrer"}
                   >
                     <span class="backlink-title">
                       @{backlink.actorHandle ?? backlink.did} on bsky

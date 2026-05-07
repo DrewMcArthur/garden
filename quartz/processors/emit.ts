@@ -5,6 +5,7 @@ import { QuartzLogger } from "../util/log"
 import { trace } from "../util/trace"
 import { BuildCtx } from "../util/ctx"
 import { styleText } from "util"
+import { prepareAtprotoBacklinkContent } from "../plugins/atprotoBacklinks"
 
 export async function emitContent(ctx: BuildCtx, content: ProcessedContent[]) {
   const { argv, cfg } = ctx
@@ -15,6 +16,7 @@ export async function emitContent(ctx: BuildCtx, content: ProcessedContent[]) {
 
   let emittedFiles = 0
   const staticResources = getStaticResourcesFromPlugins(ctx)
+  content = await prepareAtprotoBacklinkContent(ctx, content)
   await Promise.all(
     cfg.plugins.emitters.map(async (emitter) => {
       try {

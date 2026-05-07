@@ -21,6 +21,7 @@ import { getStaticResourcesFromPlugins } from "./plugins"
 import { randomIdNonSecure } from "./util/random"
 import { ChangeEvent } from "./plugins/types"
 import { minimatch } from "minimatch"
+import { prepareAtprotoBacklinkContent } from "./plugins/atprotoBacklinks"
 
 type ContentMap = Map<
   FilePath,
@@ -261,6 +262,7 @@ async function rebuild(changes: ChangeEvent[], clientRefresh: () => void, buildD
       .filter((file) => file.type === "markdown")
       .map((file) => file.content),
   )
+  processedFiles = await prepareAtprotoBacklinkContent(ctx, processedFiles)
 
   let emittedFiles = 0
   for (const emitter of cfg.plugins.emitters) {
