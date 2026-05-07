@@ -2,8 +2,9 @@ import { styleText } from "util"
 import { AtprotoBacklinksConfiguration } from "../cfg"
 import { BuildCtx } from "../util/ctx"
 import { FilePath, FullSlug, SimpleSlug, resolveRelative, simplifySlug } from "../util/path"
-import { Root, ElementContent } from "hast"
+import { Root, Element, ElementContent } from "hast"
 import { ProcessedContent, QuartzPluginData } from "./vfile"
+import { visit } from "unist-util-visit"
 
 const CONSTELLATION_BASE = "https://constellation.microcosm.blue"
 const HANDLE_RESOLVER_BASE = "https://public.api.bsky.app"
@@ -42,6 +43,7 @@ type AtprotoGeneratedRecord = {
   rkey: string
   uri: string
   href: string
+  sourceUrl?: string
   sourceKind: BacklinkTargetKind
 }
 
@@ -69,12 +71,14 @@ export type AtprotoBacklink = ConstellationRecord & {
   postExternalTitle?: string
   postExternalDescription?: string
   documentRecord?: Record<string, unknown>
+  sourceUrl?: string
 }
 
 const repoDidCache = new Map<string, string>()
 const subjectBacklinksCache = new Map<string, Promise<AtprotoBacklink[]>>()
 const didPdsCache = new Map<string, Promise<string | null>>()
 const recordCache = new Map<string, Promise<Record<string, unknown> | null>>()
+const externalUrlAtUriCache = new Map<string, Promise<string | null>>()
 
 function getFrontmatterString(fileData: QuartzPluginData, key: string): string | undefined {
   const value = fileData.frontmatter?.[key]
@@ -115,6 +119,60 @@ function parseAtUri(uri: string): { did: string; collection: string; rkey: strin
   const match = uri.match(/^at:\/\/([^/]+)\/([^/]+)\/([^/?#]+)$/)
   if (!match) return null
   return { did: match[1], collection: match[2], rkey: match[3] }
+}
+
+function normalizeExternalUrl(rawUrl: string): string | null {
+  try {
+    const url = new URL(rawUrl)
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null
+    url.hash = ""
+    return url.toString()
+  } catch {
+    return null
+  }
+}
+
+function extractAtUriFromHtml(html: string): string | null {
+  const headMatch = html.match(/<head\b[^>]*>([\s\S]*?)<\/head>/i)
+  const head = headMatch?.[1] ?? html.slice(0, 20000)
+  const linkRegex = /<link\b[^>]*>/gi
+
+  for (const [linkTag] of head.matchAll(linkRegex)) {
+    const rel = linkTag.match(/\brel=(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i)
+    const href = linkTag.match(/\bhref=(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i)
+    const relValue = (rel?.[1] ?? rel?.[2] ?? rel?.[3] ?? "").toLowerCase()
+    const hrefValue = href?.[1] ?? href?.[2] ?? href?.[3]
+    if (!hrefValue?.startsWith("at://")) continue
+
+    const relTokens = relValue.split(/\s+/)
+    if (relTokens.includes("site.standard.document") || relTokens.includes("alternate")) {
+      return hrefValue
+    }
+  }
+
+  return null
+}
+
+async function resolveAtUriForExternalUrl(rawUrl: string): Promise<string | null> {
+  const normalizedUrl = normalizeExternalUrl(rawUrl)
+  if (!normalizedUrl) return null
+
+  const cached = externalUrlAtUriCache.get(normalizedUrl)
+  if (cached) return cached
+
+  const pending = (async () => {
+    try {
+      const response = await fetch(normalizedUrl, { headers: { Accept: "text/html" } })
+      if (!response.ok) return null
+      const html = await response.text()
+      return extractAtUriFromHtml(html)
+    } catch {
+      return null
+    }
+  })()
+
+  externalUrlAtUriCache.set(normalizedUrl, pending)
+  return pending
 }
 
 function truncateText(text: string, maxLength = 180): string {
@@ -441,6 +499,30 @@ async function enrichAtprotoBacklinks(backlinks: AtprotoBacklink[]): Promise<Atp
   return [...enrichedPublications, ...enrichedBluesky, ...otherBacklinks]
 }
 
+async function enrichAtprotoRecordFromUri(
+  atUri: string,
+  sourceUrl: string,
+): Promise<AtprotoBacklink | null> {
+  const record = parseAtUri(atUri)
+  if (!record) return null
+
+  const [enriched] = await enrichAtprotoBacklinks([
+    {
+      ...record,
+      source: "external-url",
+      sourceCollection: record.collection,
+      sourcePath: "",
+      uri: atUri,
+      href: sourceUrl,
+      target: sourceUrl,
+      targetKind: "url",
+      sourceUrl,
+    },
+  ])
+
+  return enriched ?? null
+}
+
 function stripOneTrailingSlash(url: string): string {
   try {
     const parsed = new URL(url)
@@ -724,10 +806,13 @@ function renderLeafletContent(backlink: AtprotoBacklink): ElementContent[] | und
   return children.length > 0 ? children : undefined
 }
 
-function generatedBreadcrumbs(title: string, linkedNotes: QuartzPluginData[]): AtprotoBreadcrumb[] {
+function generatedBreadcrumbs(
+  title: string,
+  contextNotes: QuartzPluginData[],
+): AtprotoBreadcrumb[] {
   const root: AtprotoBreadcrumb = { displayName: "Home", slug: "index" as FullSlug }
-  if (linkedNotes.length === 1) {
-    const note = linkedNotes[0]
+  if (contextNotes.length === 1) {
+    const note = contextNotes[0]
     return [
       root,
       {
@@ -782,7 +867,12 @@ function buildRecordTree(backlink: AtprotoBacklink, linkedNotes: QuartzPluginDat
     })
   }
 
-  children.push(paragraph([link(backlink.href, "Open original")], "atproto-record-source"))
+  children.push(
+    paragraph(
+      [link(backlink.sourceUrl ?? backlink.href, "Open original")],
+      "atproto-record-source",
+    ),
+  )
 
   return { type: "root", children }
 }
@@ -806,6 +896,7 @@ function newestDateForNotes(linkedNotes: QuartzPluginData[]): QuartzPluginData["
 function buildGeneratedContent(
   backlink: AtprotoBacklink,
   linkedNotes: QuartzPluginData[],
+  contextNotes: QuartzPluginData[],
 ): ProcessedContent {
   const slug = slugForBacklink(backlink)
   const linkedSlugs = linkedNotes.map((note) => simplifySlug(note.slug! as FullSlug))
@@ -828,13 +919,14 @@ function buildGeneratedContent(
     atUri: backlink.uri,
     atprotoUri: backlink.uri,
     atprotoBacklinks: [],
-    atprotoBreadcrumbs: generatedBreadcrumbs(title, linkedNotes),
+    atprotoBreadcrumbs: generatedBreadcrumbs(title, contextNotes),
     atprotoGeneratedRecord: {
       collection: backlink.collection,
       did: backlink.did,
       rkey: backlink.rkey,
       uri: backlink.uri,
       href: backlink.href,
+      sourceUrl: backlink.sourceUrl,
       sourceKind: backlink.targetKind,
     },
   }
@@ -849,21 +941,81 @@ export async function prepareAtprotoBacklinkContent(
   await Promise.all(content.map(([, file]) => hydrateAtprotoBacklinks(ctx, file.data)))
 
   const localFiles = content.map(([, file]) => file.data)
-  const localRecordKeys = new Set<string>()
+  const localRecords = new Map<string, QuartzPluginData>()
   for (const file of localFiles) {
     const atUri = getAtUri(file)
     if (!atUri) continue
 
     const record = parseAtUri(atUri)
     if (record) {
-      localRecordKeys.add(`${record.did}/${record.collection}/${record.rkey}`)
+      localRecords.set(`${record.did}/${record.collection}/${record.rkey}`, file)
     }
   }
 
   const generatedByKey = new Map<
     string,
-    { backlink: AtprotoBacklink; linkedNotes: Map<FullSlug, QuartzPluginData> }
+    {
+      backlink: AtprotoBacklink
+      linkedNotes: Map<FullSlug, QuartzPluginData>
+      sourceNotes: Map<FullSlug, QuartzPluginData>
+    }
   >()
+  const addGeneratedRecord = (
+    backlink: AtprotoBacklink,
+    direction: "record-to-note" | "note-to-record",
+    noteSlug: FullSlug,
+    noteData: QuartzPluginData,
+  ) => {
+    const key = `${backlink.did}/${backlink.collection}/${backlink.rkey}`
+    if (localRecords.has(key)) return undefined
+
+    const internalSlug = slugForBacklink(backlink)
+    backlink.internalSlug = internalSlug
+
+    let generated = generatedByKey.get(key)
+    if (!generated) {
+      generated = {
+        backlink,
+        linkedNotes: new Map(),
+        sourceNotes: new Map(),
+      }
+      generatedByKey.set(key, generated)
+    } else if (!generated.backlink.sourceUrl && backlink.sourceUrl) {
+      generated.backlink.sourceUrl = backlink.sourceUrl
+      generated.backlink.href = backlink.href
+    }
+
+    const targetMap = direction === "record-to-note" ? generated.linkedNotes : generated.sourceNotes
+    targetMap.set(noteSlug, noteData)
+    return internalSlug
+  }
+
+  const rewriteLinkToSlug = (fileData: QuartzPluginData, node: Element, targetSlug: FullSlug) => {
+    node.properties ??= {}
+    node.properties.href = resolveRelative(fileData.slug!, targetSlug)
+    node.properties["data-slug"] = targetSlug
+    delete node.properties.target
+    delete node.properties.rel
+
+    const classes = new Set((node.properties.className ?? []) as string[])
+    classes.delete("external")
+    classes.add("internal")
+    node.properties.className = [...classes]
+    node.children = node.children.filter(
+      (child) =>
+        !(
+          child.type === "element" &&
+          (((child as Element).properties?.className as string[] | undefined)?.includes(
+            "external-icon",
+          ) ||
+            (child as Element).properties?.class === "external-icon")
+        ),
+    )
+
+    const links = new Set(fileData.links ?? [])
+    links.add(simplifySlug(targetSlug))
+    fileData.links = [...links]
+  }
 
   for (const [, file] of content) {
     const noteSlug = file.data.slug
@@ -873,30 +1025,70 @@ export async function prepareAtprotoBacklinkContent(
       if (!GENERATED_COLLECTIONS.has(backlink.collection)) continue
 
       const key = `${backlink.did}/${backlink.collection}/${backlink.rkey}`
-      if (localRecordKeys.has(key)) continue
-
-      const internalSlug = slugForBacklink(backlink)
-      backlink.internalSlug = internalSlug
-
-      const generated = generatedByKey.get(key)
-      if (generated) {
-        generated.linkedNotes.set(noteSlug, file.data)
-      } else {
-        generatedByKey.set(key, {
-          backlink,
-          linkedNotes: new Map([[noteSlug, file.data]]),
-        })
-      }
+      if (localRecords.has(key)) continue
+      addGeneratedRecord(backlink, "record-to-note", noteSlug, file.data)
     }
   }
 
-  const generatedContent = [...generatedByKey.values()].map(({ backlink, linkedNotes }) =>
-    buildGeneratedContent(
-      backlink,
-      [...linkedNotes.values()].sort((a, b) =>
-        (a.frontmatter?.title ?? a.slug ?? "").localeCompare(b.frontmatter?.title ?? b.slug ?? ""),
-      ),
-    ),
+  await Promise.all(
+    content.map(async ([tree, file]) => {
+      const noteSlug = file.data.slug
+      if (!noteSlug) return
+
+      const pendingRewrites: Promise<void>[] = []
+      visit(tree, "element", (node) => {
+        if (node.tagName !== "a" || !node.properties || typeof node.properties.href !== "string") {
+          return
+        }
+
+        const sourceUrl = normalizeExternalUrl(node.properties.href)
+        if (!sourceUrl) return
+
+        pendingRewrites.push(
+          (async () => {
+            const atUri = await resolveAtUriForExternalUrl(sourceUrl)
+            if (!atUri) return
+
+            const record = parseAtUri(atUri)
+            if (!record || !GENERATED_COLLECTIONS.has(record.collection)) return
+
+            const key = `${record.did}/${record.collection}/${record.rkey}`
+            const localRecord = localRecords.get(key)
+            if (localRecord?.slug) {
+              rewriteLinkToSlug(file.data, node, localRecord.slug)
+              return
+            }
+
+            const backlink = await enrichAtprotoRecordFromUri(atUri, sourceUrl)
+            if (!backlink) return
+
+            const internalSlug = addGeneratedRecord(backlink, "note-to-record", noteSlug, file.data)
+            if (!internalSlug) return
+
+            rewriteLinkToSlug(file.data, node, internalSlug)
+          })(),
+        )
+      })
+
+      await Promise.all(pendingRewrites)
+    }),
+  )
+
+  const sortNotes = (notes: Iterable<QuartzPluginData>) =>
+    [...notes].sort((a, b) =>
+      (a.frontmatter?.title ?? a.slug ?? "").localeCompare(b.frontmatter?.title ?? b.slug ?? ""),
+    )
+
+  const generatedContent = [...generatedByKey.values()].map(
+    ({ backlink, linkedNotes, sourceNotes }) => {
+      const sortedLinkedNotes = sortNotes(linkedNotes.values())
+      const sortedSourceNotes = sortNotes(sourceNotes.values())
+      return buildGeneratedContent(
+        backlink,
+        sortedLinkedNotes,
+        sortedSourceNotes.length > 0 ? sortedSourceNotes : sortedLinkedNotes,
+      )
+    },
   )
 
   if (generatedContent.length === 0) return content
