@@ -22,6 +22,8 @@ type AtprotoBacklink = {
   postText?: string
   postExternalTitle?: string
   postExternalDescription?: string
+  commentText?: string
+  commentCreatedAt?: string
 }
 
 interface BacklinksOptions {
@@ -49,8 +51,10 @@ export default ((opts?: Partial<BacklinksOptions>) => {
     cfg,
   }: QuartzComponentProps) => {
     const slug = simplifySlug(fileData.slug!)
+    const includeGeneratedBacklinks = Boolean(fileData.atprotoGeneratedRecord)
     const backlinkFiles = allFiles.filter(
-      (file) => !file.atprotoGeneratedRecord && file.links?.includes(slug),
+      (file) =>
+        (includeGeneratedBacklinks || !file.atprotoGeneratedRecord) && file.links?.includes(slug),
     )
     const internalBacklinkRkeys = new Set(
       backlinkFiles
@@ -76,13 +80,20 @@ export default ((opts?: Partial<BacklinksOptions>) => {
     const blueskyBacklinks = externalBacklinks.filter(
       (backlink) => backlink.collection === "app.bsky.feed.post",
     )
+    const leafletCommentBacklinks = externalBacklinks.filter(
+      (backlink) => backlink.collection === "pub.leaflet.comment",
+    )
     const otherBacklinks = externalBacklinks.filter(
       (backlink) =>
         backlink.collection !== "site.standard.document" &&
-        backlink.collection !== "app.bsky.feed.post",
+        backlink.collection !== "app.bsky.feed.post" &&
+        backlink.collection !== "pub.leaflet.comment",
     )
     const hasExternalBacklinks =
-      publicationBacklinks.length > 0 || blueskyBacklinks.length > 0 || otherBacklinks.length > 0
+      publicationBacklinks.length > 0 ||
+      blueskyBacklinks.length > 0 ||
+      leafletCommentBacklinks.length > 0 ||
+      otherBacklinks.length > 0
     if (options.hideWhenEmpty && !hasInternalBacklinks && !hasExternalBacklinks) {
       return null
     }
@@ -176,6 +187,34 @@ export default ((opts?: Partial<BacklinksOptions>) => {
                         backlink.postExternalDescription ??
                         "Linked post"}
                     </p>
+                    <p class="backlink-source-kind">{sourceKindLabel(backlink)}</p>
+                  </a>
+                </li>
+              ))}
+            </OverflowList>
+          </>
+        )}
+
+        {leafletCommentBacklinks.length > 0 && (
+          <>
+            <h4 class="backlinks-external-heading">Leaflet comments</h4>
+            <OverflowList>
+              {leafletCommentBacklinks.map((backlink) => (
+                <li class="backlink-item">
+                  <a
+                    href={
+                      backlink.internalSlug
+                        ? resolveRelative(fileData.slug!, backlink.internalSlug)
+                        : backlink.href
+                    }
+                    class="backlink-card external-backlink"
+                    target={backlink.internalSlug ? undefined : "_blank"}
+                    rel={backlink.internalSlug ? undefined : "noopener noreferrer"}
+                  >
+                    <span class="backlink-title">
+                      {backlink.actorHandle ?? backlink.did} on Leaflet
+                    </span>
+                    <p class="backlink-excerpt">{backlink.commentText ?? "Leaflet comment"}</p>
                     <p class="backlink-source-kind">{sourceKindLabel(backlink)}</p>
                   </a>
                 </li>

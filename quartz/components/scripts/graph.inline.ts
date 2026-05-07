@@ -31,6 +31,7 @@ type NodeData = {
   id: SimpleSlug
   text: string
   tags: string[]
+  depth: number
 } & SimulationNodeDatum
 
 type SimpleLinkData = {
@@ -122,26 +123,30 @@ async function renderGraph(graph: HTMLElement, fullSlug: FullSlug) {
     }
   }
 
-  const neighbourhood = new Set<SimpleSlug>()
-  const wl: (SimpleSlug | "__SENTINEL")[] = [slug, "__SENTINEL"]
+  const neighbourhoodDepth = new Map<SimpleSlug, number>()
   if (depth >= 0) {
-    while (depth >= 0 && wl.length > 0) {
-      // compute neighbours
-      const cur = wl.shift()!
-      if (cur === "__SENTINEL") {
-        depth--
-        wl.push("__SENTINEL")
-      } else {
-        neighbourhood.add(cur)
-        const outgoing = links.filter((l) => l.source === cur)
-        const incoming = links.filter((l) => l.target === cur)
-        wl.push(...outgoing.map((l) => l.target), ...incoming.map((l) => l.source))
+    const wl: Array<{ id: SimpleSlug; distance: number }> = [{ id: slug, distance: 0 }]
+    for (let i = 0; i < wl.length; i++) {
+      const cur = wl[i]
+      if (cur.distance > depth) continue
+
+      const existingDistance = neighbourhoodDepth.get(cur.id)
+      if (existingDistance !== undefined && existingDistance <= cur.distance) continue
+
+      neighbourhoodDepth.set(cur.id, cur.distance)
+      if (cur.distance === depth) continue
+
+      const outgoing = links.filter((l) => l.source === cur.id)
+      const incoming = links.filter((l) => l.target === cur.id)
+      for (const next of [...outgoing.map((l) => l.target), ...incoming.map((l) => l.source)]) {
+        wl.push({ id: next, distance: cur.distance + 1 })
       }
     }
   } else {
-    validLinks.forEach((id) => neighbourhood.add(id))
-    if (showTags) tags.forEach((tag) => neighbourhood.add(tag))
+    validLinks.forEach((id) => neighbourhoodDepth.set(id, 0))
+    if (showTags) tags.forEach((tag) => neighbourhoodDepth.set(tag, 0))
   }
+  const neighbourhood = new Set(neighbourhoodDepth.keys())
 
   const nodes = [...neighbourhood].map((url) => {
     const text = url.startsWith("tags/") ? "#" + url.substring(5) : (data.get(url)?.title ?? url)
@@ -149,6 +154,7 @@ async function renderGraph(graph: HTMLElement, fullSlug: FullSlug) {
       id: url,
       text,
       tags: data.get(url)?.tags ?? [],
+      depth: neighbourhoodDepth.get(url) ?? 0,
     }
   })
   const graphData: { nodes: NodeData[]; links: LinkData[] } = {
@@ -212,6 +218,17 @@ async function renderGraph(graph: HTMLElement, fullSlug: FullSlug) {
     return 2 + Math.sqrt(numLinks)
   }
 
+  function nodeDistanceOpacity(d: NodeData) {
+    if (depth < 0) return 1
+    if (d.depth <= 0) return 1
+    if (d.depth === 1) return 0.82
+    return Math.max(0.48, 1 - d.depth * 0.24)
+  }
+
+  function linkDistanceOpacity(d: LinkData) {
+    return Math.min(nodeDistanceOpacity(d.source), nodeDistanceOpacity(d.target))
+  }
+
   let hoveredNodeId: string | null = null
   let hoveredNeighbours: Set<string> = new Set()
   const linkRenderData: LinkRenderData[] = []
@@ -254,12 +271,12 @@ async function renderGraph(graph: HTMLElement, fullSlug: FullSlug) {
     const tweenGroup = new TweenGroup()
 
     for (const l of linkRenderData) {
-      let alpha = 1
+      let alpha = linkDistanceOpacity(l.simulationData)
 
       // if we are hovering over a node, we want to highlight the immediate neighbours
       // with full alpha and the rest with default alpha
       if (hoveredNodeId) {
-        alpha = l.active ? 1 : 0.2
+        alpha = l.active ? 1 : Math.min(alpha, 0.2)
       }
 
       l.color = l.active ? computedStyleMap["--gray"] : computedStyleMap["--lightgray"]
@@ -321,11 +338,11 @@ async function renderGraph(graph: HTMLElement, fullSlug: FullSlug) {
 
     const tweenGroup = new TweenGroup()
     for (const n of nodeRenderData) {
-      let alpha = 1
+      let alpha = nodeDistanceOpacity(n.simulationData)
 
       // if we are hovering over a node, we want to highlight the immediate neighbours
       if (hoveredNodeId !== null && focusOnHover) {
-        alpha = n.active ? 1 : 0.2
+        alpha = n.active ? 1 : Math.min(alpha, 0.2)
       }
 
       tweenGroup.add(new Tweened<Graphics>(n.gfx, tweenGroup).to({ alpha }, 200))
@@ -418,6 +435,7 @@ async function renderGraph(graph: HTMLElement, fullSlug: FullSlug) {
     if (isTagNode) {
       gfx.stroke({ width: 2, color: computedStyleMap["--tertiary"] })
     }
+    gfx.alpha = nodeDistanceOpacity(n)
 
     nodesContainer.addChild(gfx)
     labelsContainer.addChild(label)
@@ -427,7 +445,7 @@ async function renderGraph(graph: HTMLElement, fullSlug: FullSlug) {
       gfx,
       label,
       color: color(n),
-      alpha: 1,
+      alpha: nodeDistanceOpacity(n),
       active: false,
     }
 
@@ -442,7 +460,7 @@ async function renderGraph(graph: HTMLElement, fullSlug: FullSlug) {
       simulationData: l,
       gfx,
       color: computedStyleMap["--lightgray"],
-      alpha: 1,
+      alpha: linkDistanceOpacity(l),
       active: false,
     }
 

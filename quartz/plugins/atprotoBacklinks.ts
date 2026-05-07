@@ -1,4 +1,6 @@
 import { styleText } from "util"
+import path from "path"
+import { mkdir, readFile, writeFile } from "fs/promises"
 import { AtprotoBacklinksConfiguration } from "../cfg"
 import { BuildCtx } from "../util/ctx"
 import { FilePath, FullSlug, SimpleSlug, resolveRelative, simplifySlug } from "../util/path"
@@ -11,9 +13,19 @@ const HANDLE_RESOLVER_BASE = "https://public.api.bsky.app"
 const APPVIEW_BASE = "https://public.api.bsky.app"
 const PLC_DIRECTORY_BASE = "https://plc.directory"
 const DEFAULT_REPO_COLLECTION = "site.standard.document"
-const DEFAULT_SOURCE_COLLECTIONS = ["site.standard.document", "app.bsky.feed.post"] as const
+const DEFAULT_SOURCE_COLLECTIONS = [
+  "site.standard.document",
+  "app.bsky.feed.post",
+  "pub.leaflet.comment",
+] as const
 const DEFAULT_BACKLINK_LIMIT = 12
-const GENERATED_COLLECTIONS = new Set(["site.standard.document", "app.bsky.feed.post"])
+const GENERATED_COLLECTIONS = new Set([
+  "site.standard.document",
+  "app.bsky.feed.post",
+  "pub.leaflet.comment",
+])
+const ALLOWED_DIDS_FILE = "atproto.allowedDids.json"
+const DISCOVERED_DIDS_REPORT_FILE = path.join(".quartz-cache", "atproto-discovered-dids.json")
 
 type ConstellationRecord = {
   did: string
@@ -52,6 +64,37 @@ type AtprotoBreadcrumb = {
   slug?: FullSlug
 }
 
+type AtprotoLinkTarget = {
+  slug: FullSlug
+  title: string
+  kind: "note" | "record"
+  dates?: QuartzPluginData["dates"]
+}
+
+type DiscoveredDidReason = "did-not-allowed" | "unsupported-collection"
+
+type DiscoveredDidRecord = {
+  uri: string
+  collection: string
+  rkey: string
+  title?: string
+  sourcePage?: FullSlug
+  sourceUrl?: string
+  reason: DiscoveredDidReason
+}
+
+type DiscoveredDidsReport = {
+  generatedAt: string
+  allowlistPath: string
+  dids: Record<
+    string,
+    {
+      allowed: boolean
+      records: DiscoveredDidRecord[]
+    }
+  >
+}
+
 export type AtprotoBacklink = ConstellationRecord & {
   source: string
   sourceCollection: string
@@ -70,6 +113,11 @@ export type AtprotoBacklink = ConstellationRecord & {
   postText?: string
   postExternalTitle?: string
   postExternalDescription?: string
+  commentText?: string
+  commentCreatedAt?: string
+  commentSubject?: string
+  commentParent?: string
+  commentRecord?: Record<string, unknown>
   documentRecord?: Record<string, unknown>
   sourceUrl?: string
 }
@@ -77,6 +125,7 @@ export type AtprotoBacklink = ConstellationRecord & {
 const repoDidCache = new Map<string, string>()
 const subjectBacklinksCache = new Map<string, Promise<AtprotoBacklink[]>>()
 const didPdsCache = new Map<string, Promise<string | null>>()
+const didHandleCache = new Map<string, Promise<string | null>>()
 const recordCache = new Map<string, Promise<Record<string, unknown> | null>>()
 const externalUrlAtUriCache = new Map<string, Promise<string | null>>()
 
@@ -97,6 +146,39 @@ function sourceFromCollectionAndPath(collection: string, path: string): string {
 
 function makeAtUri(did: string, collection: string, rkey: string): string {
   return `at://${did}/${collection}/${rkey}`
+}
+
+function recordKey(record: ConstellationRecord): string {
+  return `${record.did}/${record.collection}/${record.rkey}`
+}
+
+function allowlistPath(): string {
+  return path.resolve(process.cwd(), ALLOWED_DIDS_FILE)
+}
+
+function discoveredDidsReportPath(): string {
+  return path.resolve(process.cwd(), DISCOVERED_DIDS_REPORT_FILE)
+}
+
+async function readAllowedDids(): Promise<Record<string, boolean>> {
+  try {
+    const raw = await readFile(allowlistPath(), "utf8")
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    return Object.fromEntries(
+      Object.entries(parsed).filter((entry): entry is [string, boolean] => {
+        const [did, allowed] = entry
+        return did.startsWith("did:") && typeof allowed === "boolean"
+      }),
+    )
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code
+    if (code !== "ENOENT") {
+      console.warn(styleText("yellow", `[ATProto] failed to read ${ALLOWED_DIDS_FILE}`))
+      console.warn(err)
+    }
+
+    return {}
+  }
 }
 
 export function getAtUri(fileData: QuartzPluginData): string | undefined {
@@ -226,6 +308,28 @@ async function resolvePdsEndpointForDid(did: string): Promise<string | null> {
   })()
 
   didPdsCache.set(did, pending)
+  return pending
+}
+
+async function resolveHandleForDid(did: string): Promise<string | null> {
+  const cached = didHandleCache.get(did)
+  if (cached) return cached
+
+  const pending = (async () => {
+    try {
+      const response = await fetch(`${PLC_DIRECTORY_BASE}/${did}`, {
+        headers: { Accept: "application/json" },
+      })
+      if (!response.ok) return null
+      const payload = (await response.json()) as { alsoKnownAs?: string[] }
+      const atIdentifier = payload.alsoKnownAs?.find((identifier) => identifier.startsWith("at://"))
+      return atIdentifier ? atIdentifier.slice("at://".length) : null
+    } catch {
+      return null
+    }
+  })()
+
+  didHandleCache.set(did, pending)
   return pending
 }
 
@@ -478,6 +582,34 @@ async function enrichBlueskyBacklinks(backlinks: AtprotoBacklink[]): Promise<Atp
   })
 }
 
+async function enrichLeafletCommentBacklink(backlink: AtprotoBacklink): Promise<AtprotoBacklink> {
+  const value = await fetchRepoRecord(backlink.did, backlink.collection, backlink.rkey)
+  if (!value) return backlink
+
+  const enriched: AtprotoBacklink = { ...backlink, commentRecord: value }
+  const handle = await resolveHandleForDid(backlink.did)
+  if (handle) {
+    enriched.actorHandle = handle
+  }
+
+  if (typeof value.plaintext === "string" && value.plaintext.trim().length > 0) {
+    enriched.commentText = truncateText(value.plaintext, 280)
+  }
+  if (typeof value.createdAt === "string") {
+    enriched.commentCreatedAt = value.createdAt
+  }
+  if (typeof value.subject === "string") {
+    enriched.commentSubject = value.subject
+  }
+
+  const reply = value.reply as Record<string, unknown> | undefined
+  if (typeof reply?.parent === "string") {
+    enriched.commentParent = reply.parent
+  }
+
+  return enriched
+}
+
 async function enrichAtprotoBacklinks(backlinks: AtprotoBacklink[]): Promise<AtprotoBacklink[]> {
   const publicationBacklinks = backlinks.filter(
     (backlink) => backlink.collection === "site.standard.document",
@@ -485,18 +617,30 @@ async function enrichAtprotoBacklinks(backlinks: AtprotoBacklink[]): Promise<Atp
   const blueskyBacklinks = backlinks.filter(
     (backlink) => backlink.collection === "app.bsky.feed.post",
   )
+  const leafletCommentBacklinks = backlinks.filter(
+    (backlink) => backlink.collection === "pub.leaflet.comment",
+  )
   const otherBacklinks = backlinks.filter(
     (backlink) =>
       backlink.collection !== "site.standard.document" &&
-      backlink.collection !== "app.bsky.feed.post",
+      backlink.collection !== "app.bsky.feed.post" &&
+      backlink.collection !== "pub.leaflet.comment",
   )
 
   const enrichedPublications = await Promise.all(
     publicationBacklinks.map((backlink) => enrichPublicationBacklink(backlink)),
   )
   const enrichedBluesky = await enrichBlueskyBacklinks(blueskyBacklinks)
+  const enrichedLeafletComments = await Promise.all(
+    leafletCommentBacklinks.map((backlink) => enrichLeafletCommentBacklink(backlink)),
+  )
 
-  return [...enrichedPublications, ...enrichedBluesky, ...otherBacklinks]
+  return [
+    ...enrichedPublications,
+    ...enrichedBluesky,
+    ...enrichedLeafletComments,
+    ...otherBacklinks,
+  ]
 }
 
 async function enrichAtprotoRecordFromUri(
@@ -625,6 +769,10 @@ function backlinkTitle(backlink: AtprotoBacklink): string {
     return `@${backlink.actorHandle ?? backlink.did} on Bluesky`
   }
 
+  if (backlink.collection === "pub.leaflet.comment") {
+    return `${backlink.actorHandle ?? backlink.did} on Leaflet`
+  }
+
   if (backlink.collection === "site.standard.document") {
     return backlink.documentTitle ?? backlink.publicationName ?? "Untitled document"
   }
@@ -635,12 +783,94 @@ function backlinkTitle(backlink: AtprotoBacklink): string {
 function backlinkDescription(backlink: AtprotoBacklink): string {
   return (
     backlink.postText ??
+    backlink.commentText ??
     backlink.documentDescription ??
     backlink.postExternalTitle ??
     backlink.postExternalDescription ??
     backlink.publicationName ??
     backlink.uri
   )
+}
+
+function isAllowedGeneratedRecord(
+  record: ConstellationRecord,
+  allowedDids: Record<string, boolean>,
+) {
+  return GENERATED_COLLECTIONS.has(record.collection) && allowedDids[record.did] === true
+}
+
+function createDiscoveredDidsReport(allowedDids: Record<string, boolean>): DiscoveredDidsReport {
+  return {
+    generatedAt: new Date().toISOString(),
+    allowlistPath: ALLOWED_DIDS_FILE,
+    dids: Object.fromEntries(
+      Object.entries(allowedDids)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([did, allowed]) => [did, { allowed, records: [] }]),
+    ),
+  }
+}
+
+function addDiscoveredDidRecord(
+  report: DiscoveredDidsReport,
+  record: ConstellationRecord,
+  allowedDids: Record<string, boolean>,
+  reason: DiscoveredDidReason,
+  sourcePage?: FullSlug,
+  sourceUrl?: string,
+  title?: string,
+) {
+  const entry = (report.dids[record.did] ??= {
+    allowed: allowedDids[record.did] === true,
+    records: [],
+  })
+  const uri = makeAtUri(record.did, record.collection, record.rkey)
+  if (
+    entry.records.some(
+      (existing) =>
+        existing.uri === uri &&
+        existing.reason === reason &&
+        existing.sourcePage === sourcePage &&
+        existing.sourceUrl === sourceUrl,
+    )
+  ) {
+    return
+  }
+
+  entry.records.push({
+    uri,
+    collection: record.collection,
+    rkey: record.rkey,
+    title,
+    sourcePage,
+    sourceUrl,
+    reason,
+  })
+}
+
+async function writeDiscoveredDidsReport(report: DiscoveredDidsReport) {
+  for (const entry of Object.values(report.dids)) {
+    entry.records.sort((a, b) => a.uri.localeCompare(b.uri))
+  }
+
+  const sortedReport: DiscoveredDidsReport = {
+    ...report,
+    dids: Object.fromEntries(
+      Object.entries(report.dids)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([did, entry]) => [
+          did,
+          {
+            allowed: entry.allowed,
+            records: entry.records,
+          },
+        ]),
+    ),
+  }
+
+  const reportPath = discoveredDidsReportPath()
+  await mkdir(path.dirname(reportPath), { recursive: true })
+  await writeFile(reportPath, `${JSON.stringify(sortedReport, null, 2)}\n`)
 }
 
 function textNode(value: string): ElementContent {
@@ -731,18 +961,29 @@ function renderLeafletText(plaintext: string, facets: unknown): ElementContent[]
     const end = byteIndexToStringIndex(plaintext, facet.index!.byteEnd as number)
     if (start < cursor || end <= start) continue
 
-    if (start > cursor) {
-      children.push(textNode(plaintext.slice(cursor, start)))
+    const features = facet.features as Array<Record<string, unknown>>
+    const href = leafletFacetHref(features)
+    let beforeText = plaintext.slice(cursor, start)
+    let segment = plaintext.slice(start, end)
+    let nextCursor = end
+    if (href) {
+      const markdownLinkMatch = beforeText.match(/\[([^\]\n]+)\]\($/)
+      if (markdownLinkMatch && plaintext[end] === ")") {
+        beforeText = beforeText.slice(0, -markdownLinkMatch[0].length)
+        segment = markdownLinkMatch[1]
+        nextCursor = end + 1
+      }
     }
 
-    const features = facet.features as Array<Record<string, unknown>>
-    const segment = plaintext.slice(start, end)
+    if (beforeText.length > 0) {
+      children.push(textNode(beforeText))
+    }
+
     let segmentNode: ElementContent = textNode(segment)
     if (leafletFacetHasCode(features)) {
       segmentNode = element("code", {}, [segmentNode])
     }
 
-    const href = leafletFacetHref(features)
     if (href) {
       segmentNode = element("a", { href, target: "_blank", rel: ["noopener", "noreferrer"] }, [
         segmentNode,
@@ -750,7 +991,7 @@ function renderLeafletText(plaintext: string, facets: unknown): ElementContent[]
     }
 
     children.push(segmentNode)
-    cursor = end
+    cursor = nextCursor
   }
 
   if (cursor < plaintext.length) {
@@ -761,6 +1002,10 @@ function renderLeafletText(plaintext: string, facets: unknown): ElementContent[]
 }
 
 function leafletPlaintext(backlink: AtprotoBacklink): string | undefined {
+  if (backlink.collection === "pub.leaflet.comment" && backlink.commentText) {
+    return backlink.commentText
+  }
+
   const pages = (backlink.documentRecord?.content as { pages?: unknown[] } | undefined)?.pages
   if (!Array.isArray(pages)) return undefined
 
@@ -781,7 +1026,18 @@ function leafletPlaintext(backlink: AtprotoBacklink): string | undefined {
   return blocks.length > 0 ? blocks.join("\n\n") : undefined
 }
 
+function renderLeafletCommentContent(backlink: AtprotoBacklink): ElementContent[] | undefined {
+  if (backlink.collection !== "pub.leaflet.comment") return undefined
+  const plaintext = backlink.commentRecord?.plaintext
+  if (typeof plaintext !== "string" || plaintext.trim().length === 0) return undefined
+
+  return [paragraph(renderLeafletText(plaintext, backlink.commentRecord?.facets))]
+}
+
 function renderLeafletContent(backlink: AtprotoBacklink): ElementContent[] | undefined {
+  const commentContent = renderLeafletCommentContent(backlink)
+  if (commentContent) return commentContent
+
   const content = backlink.documentRecord?.content as
     | { $type?: unknown; pages?: unknown[] }
     | undefined
@@ -808,16 +1064,16 @@ function renderLeafletContent(backlink: AtprotoBacklink): ElementContent[] | und
 
 function generatedBreadcrumbs(
   title: string,
-  contextNotes: QuartzPluginData[],
+  contextPages: AtprotoLinkTarget[],
 ): AtprotoBreadcrumb[] {
   const root: AtprotoBreadcrumb = { displayName: "Home", slug: "index" as FullSlug }
-  if (contextNotes.length === 1) {
-    const note = contextNotes[0]
+  if (contextPages.length === 1) {
+    const page = contextPages[0]
     return [
       root,
       {
-        displayName: note.frontmatter?.title ?? note.slug!,
-        slug: note.slug!,
+        displayName: page.title,
+        slug: page.slug,
       },
       { displayName: title },
     ]
@@ -826,7 +1082,24 @@ function generatedBreadcrumbs(
   return [root, { displayName: title }]
 }
 
-function buildRecordTree(backlink: AtprotoBacklink, linkedNotes: QuartzPluginData[]): Root {
+function linkTargetFromFile(fileData: QuartzPluginData): AtprotoLinkTarget {
+  return {
+    slug: fileData.slug!,
+    title: fileData.frontmatter?.title ?? fileData.slug!,
+    kind: "note",
+    dates: fileData.dates,
+  }
+}
+
+function linkTargetFromBacklink(backlink: AtprotoBacklink): AtprotoLinkTarget {
+  return {
+    slug: slugForBacklink(backlink),
+    title: backlinkTitle(backlink),
+    kind: "record",
+  }
+}
+
+function buildRecordTree(backlink: AtprotoBacklink, linkedPages: AtprotoLinkTarget[]): Root {
   const description = backlinkDescription(backlink)
   const sourceLabel = backlink.targetKind === "url" ? "Linked via URL" : "Linked via at:// URI"
   const sourceParts = [
@@ -841,28 +1114,25 @@ function buildRecordTree(backlink: AtprotoBacklink, linkedNotes: QuartzPluginDat
 
   children.push(paragraph([textNode(sourceParts.join(" · "))], "atproto-record-meta"))
 
-  if (linkedNotes.length > 0) {
+  if (linkedPages.length > 0) {
+    const linkedPageHeading = linkedPages.every((page) => page.kind === "note")
+      ? "Linked notes"
+      : "Linked pages"
     children.push({
       type: "element",
       tagName: "h2",
       properties: {},
-      children: [textNode("Linked notes")],
+      children: [textNode(linkedPageHeading)],
     })
     children.push({
       type: "element",
       tagName: "ul",
       properties: {},
-      children: linkedNotes.map((note) => ({
+      children: linkedPages.map((page) => ({
         type: "element",
         tagName: "li",
         properties: {},
-        children: [
-          link(
-            resolveRelative(slugForBacklink(backlink), note.slug!),
-            note.frontmatter?.title ?? note.slug!,
-            true,
-          ),
-        ],
+        children: [link(resolveRelative(slugForBacklink(backlink), page.slug), page.title, true)],
       })),
     })
   }
@@ -877,15 +1147,15 @@ function buildRecordTree(backlink: AtprotoBacklink, linkedNotes: QuartzPluginDat
   return { type: "root", children }
 }
 
-function newestDateForNotes(linkedNotes: QuartzPluginData[]): QuartzPluginData["dates"] {
-  const datedNotes = linkedNotes.filter((note) => note.dates)
-  if (datedNotes.length === 0) {
+function newestDateForTargets(linkedPages: AtprotoLinkTarget[]): QuartzPluginData["dates"] {
+  const datedPages = linkedPages.filter((page) => page.dates)
+  if (datedPages.length === 0) {
     const now = new Date()
     return { created: now, modified: now, published: now }
   }
 
-  return datedNotes
-    .map((note) => note.dates!)
+  return datedPages
+    .map((page) => page.dates!)
     .reduce((newest, dates) => ({
       created: dates.created > newest.created ? dates.created : newest.created,
       modified: dates.modified > newest.modified ? dates.modified : newest.modified,
@@ -893,13 +1163,27 @@ function newestDateForNotes(linkedNotes: QuartzPluginData[]): QuartzPluginData["
     }))
 }
 
+function dateForGeneratedRecord(
+  backlink: AtprotoBacklink,
+  linkedPages: AtprotoLinkTarget[],
+): QuartzPluginData["dates"] {
+  if (backlink.commentCreatedAt) {
+    const commentDate = new Date(backlink.commentCreatedAt)
+    if (!Number.isNaN(commentDate.valueOf())) {
+      return { created: commentDate, modified: commentDate, published: commentDate }
+    }
+  }
+
+  return newestDateForTargets(linkedPages)
+}
+
 function buildGeneratedContent(
   backlink: AtprotoBacklink,
-  linkedNotes: QuartzPluginData[],
-  contextNotes: QuartzPluginData[],
+  linkedPages: AtprotoLinkTarget[],
+  contextPages: AtprotoLinkTarget[],
 ): ProcessedContent {
   const slug = slugForBacklink(backlink)
-  const linkedSlugs = linkedNotes.map((note) => simplifySlug(note.slug! as FullSlug))
+  const linkedSlugs = linkedPages.map((page) => simplifySlug(page.slug))
   const description = backlinkDescription(backlink)
   const title = backlinkTitle(backlink)
   const contentText = leafletPlaintext(backlink) ?? description
@@ -912,14 +1196,14 @@ function buildGeneratedContent(
       title,
       tags: [],
     },
-    dates: newestDateForNotes(linkedNotes),
+    dates: dateForGeneratedRecord(backlink, linkedPages),
     description,
     text: [title, contentText].join("\n\n"),
     links: linkedSlugs as SimpleSlug[],
     atUri: backlink.uri,
     atprotoUri: backlink.uri,
     atprotoBacklinks: [],
-    atprotoBreadcrumbs: generatedBreadcrumbs(title, contextNotes),
+    atprotoBreadcrumbs: generatedBreadcrumbs(title, contextPages),
     atprotoGeneratedRecord: {
       collection: backlink.collection,
       did: backlink.did,
@@ -931,14 +1215,17 @@ function buildGeneratedContent(
     },
   }
 
-  return [buildRecordTree(backlink, linkedNotes), { data } as ProcessedContent[1]]
+  return [buildRecordTree(backlink, linkedPages), { data } as ProcessedContent[1]]
 }
 
 export async function prepareAtprotoBacklinkContent(
   ctx: BuildCtx,
   content: ProcessedContent[],
 ): Promise<ProcessedContent[]> {
+  const atprotoCfg = normalizeAtprotoBacklinksConfig(ctx.cfg.configuration.atprotoBacklinks)
   await Promise.all(content.map(([, file]) => hydrateAtprotoBacklinks(ctx, file.data)))
+  const allowedDids = await readAllowedDids()
+  const discoveredDidsReport = createDiscoveredDidsReport(allowedDids)
 
   const localFiles = content.map(([, file]) => file.data)
   const localRecords = new Map<string, QuartzPluginData>()
@@ -952,22 +1239,37 @@ export async function prepareAtprotoBacklinkContent(
     }
   }
 
+  const generationSkipReason = (record: ConstellationRecord): DiscoveredDidReason | undefined => {
+    if (!GENERATED_COLLECTIONS.has(record.collection)) return "unsupported-collection"
+    if (allowedDids[record.did] !== true) return "did-not-allowed"
+    return undefined
+  }
+
+  const writeReport = async () => {
+    try {
+      await writeDiscoveredDidsReport(discoveredDidsReport)
+    } catch (err) {
+      console.warn(styleText("yellow", `[ATProto] failed to write discovered DID report`))
+      console.warn(err)
+    }
+  }
+
   const generatedByKey = new Map<
     string,
     {
       backlink: AtprotoBacklink
-      linkedNotes: Map<FullSlug, QuartzPluginData>
-      sourceNotes: Map<FullSlug, QuartzPluginData>
+      linkedPages: Map<FullSlug, AtprotoLinkTarget>
+      sourcePages: Map<FullSlug, AtprotoLinkTarget>
     }
   >()
   const addGeneratedRecord = (
     backlink: AtprotoBacklink,
-    direction: "record-to-note" | "note-to-record",
-    noteSlug: FullSlug,
-    noteData: QuartzPluginData,
+    direction: "record-to-page" | "page-to-record",
+    linkedPage: AtprotoLinkTarget,
   ) => {
-    const key = `${backlink.did}/${backlink.collection}/${backlink.rkey}`
+    const key = recordKey(backlink)
     if (localRecords.has(key)) return undefined
+    if (!isAllowedGeneratedRecord(backlink, allowedDids)) return undefined
 
     const internalSlug = slugForBacklink(backlink)
     backlink.internalSlug = internalSlug
@@ -976,8 +1278,8 @@ export async function prepareAtprotoBacklinkContent(
     if (!generated) {
       generated = {
         backlink,
-        linkedNotes: new Map(),
-        sourceNotes: new Map(),
+        linkedPages: new Map(),
+        sourcePages: new Map(),
       }
       generatedByKey.set(key, generated)
     } else if (!generated.backlink.sourceUrl && backlink.sourceUrl) {
@@ -985,8 +1287,8 @@ export async function prepareAtprotoBacklinkContent(
       generated.backlink.href = backlink.href
     }
 
-    const targetMap = direction === "record-to-note" ? generated.linkedNotes : generated.sourceNotes
-    targetMap.set(noteSlug, noteData)
+    const targetMap = direction === "record-to-page" ? generated.linkedPages : generated.sourcePages
+    targetMap.set(linkedPage.slug, linkedPage)
     return internalSlug
   }
 
@@ -1021,13 +1323,30 @@ export async function prepareAtprotoBacklinkContent(
     const noteSlug = file.data.slug
     if (!noteSlug) continue
 
+    const renderableBacklinks: AtprotoBacklink[] = []
     for (const backlink of (file.data.atprotoBacklinks ?? []) as AtprotoBacklink[]) {
-      if (!GENERATED_COLLECTIONS.has(backlink.collection)) continue
+      const skipReason = generationSkipReason(backlink)
+      if (skipReason) {
+        addDiscoveredDidRecord(
+          discoveredDidsReport,
+          backlink,
+          allowedDids,
+          skipReason,
+          noteSlug,
+          backlink.sourceUrl,
+          backlinkTitle(backlink),
+        )
+        continue
+      }
 
-      const key = `${backlink.did}/${backlink.collection}/${backlink.rkey}`
+      const key = recordKey(backlink)
       if (localRecords.has(key)) continue
-      addGeneratedRecord(backlink, "record-to-note", noteSlug, file.data)
+      if (addGeneratedRecord(backlink, "record-to-page", linkTargetFromFile(file.data))) {
+        renderableBacklinks.push(backlink)
+      }
     }
+
+    file.data.atprotoBacklinks = renderableBacklinks
   }
 
   await Promise.all(
@@ -1050,19 +1369,36 @@ export async function prepareAtprotoBacklinkContent(
             if (!atUri) return
 
             const record = parseAtUri(atUri)
-            if (!record || !GENERATED_COLLECTIONS.has(record.collection)) return
+            if (!record) return
 
-            const key = `${record.did}/${record.collection}/${record.rkey}`
+            const key = recordKey(record)
             const localRecord = localRecords.get(key)
             if (localRecord?.slug) {
               rewriteLinkToSlug(file.data, node, localRecord.slug)
               return
             }
 
+            const skipReason = generationSkipReason(record)
+            if (skipReason) {
+              addDiscoveredDidRecord(
+                discoveredDidsReport,
+                record,
+                allowedDids,
+                skipReason,
+                noteSlug,
+                sourceUrl,
+              )
+              return
+            }
+
             const backlink = await enrichAtprotoRecordFromUri(atUri, sourceUrl)
             if (!backlink) return
 
-            const internalSlug = addGeneratedRecord(backlink, "note-to-record", noteSlug, file.data)
+            const internalSlug = addGeneratedRecord(
+              backlink,
+              "page-to-record",
+              linkTargetFromFile(file.data),
+            )
             if (!internalSlug) return
 
             rewriteLinkToSlug(file.data, node, internalSlug)
@@ -1074,22 +1410,59 @@ export async function prepareAtprotoBacklinkContent(
     }),
   )
 
-  const sortNotes = (notes: Iterable<QuartzPluginData>) =>
-    [...notes].sort((a, b) =>
-      (a.frontmatter?.title ?? a.slug ?? "").localeCompare(b.frontmatter?.title ?? b.slug ?? ""),
+  if (atprotoCfg.sourceCollections.includes("pub.leaflet.comment")) {
+    const generatedRecordsForCommentLookup = [...generatedByKey.values()].filter(
+      ({ backlink }) => backlink.collection === "site.standard.document",
     )
 
+    await Promise.all(
+      generatedRecordsForCommentLookup.map(async ({ backlink: subjectBacklink }) => {
+        const commentBacklinks = await fetchBacklinksForSubject(
+          { value: subjectBacklink.uri, kind: "at-uri" },
+          ["pub.leaflet.comment"],
+          atprotoCfg.limit,
+        )
+        const enrichedComments = await enrichAtprotoBacklinks(commentBacklinks)
+        const subjectPage = linkTargetFromBacklink(subjectBacklink)
+
+        for (const comment of enrichedComments) {
+          const skipReason = generationSkipReason(comment)
+          if (skipReason) {
+            addDiscoveredDidRecord(
+              discoveredDidsReport,
+              comment,
+              allowedDids,
+              skipReason,
+              subjectPage.slug,
+              comment.sourceUrl,
+              backlinkTitle(comment),
+            )
+            continue
+          }
+
+          if (localRecords.has(recordKey(comment))) continue
+          addGeneratedRecord(comment, "record-to-page", subjectPage)
+        }
+      }),
+    )
+  }
+
+  const sortPages = (pages: Iterable<AtprotoLinkTarget>) =>
+    [...pages].sort((a, b) => a.title.localeCompare(b.title))
+
   const generatedContent = [...generatedByKey.values()].map(
-    ({ backlink, linkedNotes, sourceNotes }) => {
-      const sortedLinkedNotes = sortNotes(linkedNotes.values())
-      const sortedSourceNotes = sortNotes(sourceNotes.values())
+    ({ backlink, linkedPages, sourcePages }) => {
+      const sortedLinkedPages = sortPages(linkedPages.values())
+      const sortedSourcePages = sortPages(sourcePages.values())
       return buildGeneratedContent(
         backlink,
-        sortedLinkedNotes,
-        sortedSourceNotes.length > 0 ? sortedSourceNotes : sortedLinkedNotes,
+        sortedLinkedPages,
+        sortedSourcePages.length > 0 ? sortedSourcePages : sortedLinkedPages,
       )
     },
   )
+
+  await writeReport()
 
   if (generatedContent.length === 0) return content
 
