@@ -10,5 +10,4 @@ These notes are written with [[Obsidian]], and get pushed automatically to this 
 
 Check out some of the [[Latest Updates]].
 
-
 There's also some interoperability with [[the ATmosphere]]. For example, check out [[a list of my leaflet posts]].

@@ -9,6 +9,11 @@ import { ProcessedContent, QuartzPluginData } from "./vfile"
 import { visit } from "unist-util-visit"
 
 const CONSTELLATION_BASE = "https://constellation.microcosm.blue"
+const CONSTELLATION_USER_AGENT = "notes.drewmca.net build (@drewmca.net)"
+const CONSTELLATION_HEADERS = {
+  Accept: "application/json",
+  "User-Agent": CONSTELLATION_USER_AGENT,
+}
 const HANDLE_RESOLVER_BASE = "https://public.api.bsky.app"
 const APPVIEW_BASE = "https://public.api.bsky.app"
 const PLC_DIRECTORY_BASE = "https://plc.directory"
@@ -431,7 +436,7 @@ async function fetchBacklinksForSubject(
     const sourceUrl = new URL("/links/all", CONSTELLATION_BASE)
     sourceUrl.searchParams.set("target", target.value)
 
-    const sourceResp = await fetch(sourceUrl, { headers: { Accept: "application/json" } })
+    const sourceResp = await fetch(sourceUrl, { headers: CONSTELLATION_HEADERS })
     if (!sourceResp.ok) {
       throw new Error(`links/all failed for ${target.value}: ${sourceResp.status}`)
     }
@@ -449,7 +454,7 @@ async function fetchBacklinksForSubject(
         backlinksUrl.searchParams.set("source", source)
         backlinksUrl.searchParams.set("limit", `${limit}`)
 
-        const backlinksResp = await fetch(backlinksUrl, { headers: { Accept: "application/json" } })
+        const backlinksResp = await fetch(backlinksUrl, { headers: CONSTELLATION_HEADERS })
         if (!backlinksResp.ok) return []
 
         const payload = (await backlinksResp.json()) as BacklinksResponse
