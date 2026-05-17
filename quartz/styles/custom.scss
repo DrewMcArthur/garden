@@ -2,6 +2,218 @@
 @use "./variables.scss" as *;
 
 // put your custom CSS here!
+.page > #quartz-body {
+  #note-track-shell {
+    grid-area: grid-center;
+  }
+}
+
+#note-track-chrome {
+  display: none;
+}
+
+#note-path {
+  display: none;
+}
+
+@media all and ($desktop) {
+  body.pane-mode {
+    --note-column-width: clamp(28rem, 34vw, 38rem);
+    --note-column-pad-x: 1.15rem;
+
+    overflow-x: hidden;
+
+    .page {
+      max-width: none;
+      margin: 0;
+    }
+
+    .page > #quartz-body {
+      grid-template-columns: minmax(0, calc(100vw - #{$sidePanelWidth})) $sidePanelWidth;
+      grid-template-rows: auto auto;
+      grid-template-areas:
+        "grid-center grid-sidebar-right"
+        "grid-footer grid-sidebar-right";
+      column-gap: 0;
+      align-items: start;
+    }
+
+    .page > #quartz-body > .sidebar.left {
+      display: none !important;
+    }
+
+    .page > #quartz-body > .sidebar.right {
+      z-index: 2;
+      background: var(--light);
+      box-shadow: -18px 0 32px rgba(0, 0, 0, 0.08);
+    }
+
+    #note-track-shell {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      min-width: 0;
+    }
+
+    #note-track-chrome {
+      position: absolute;
+      z-index: 3;
+      top: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      box-sizing: border-box;
+      padding: $topSpacing var(--note-column-pad-x) 0;
+      pointer-events: none;
+
+      .page-title,
+      #note-path {
+        pointer-events: auto;
+      }
+
+      .page-title {
+        font-size: 1.75rem;
+        margin: 0;
+        font-family: var(--titleFont);
+      }
+    }
+
+    #note-column-track {
+      display: flex;
+      flex-direction: row-reverse;
+      height: 100vh;
+      min-width: 0;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scroll-snap-type: x proximity;
+      scroll-behavior: smooth;
+
+      > .note-column {
+        flex: 0 0 var(--note-column-width);
+        min-width: 0;
+        max-width: none;
+        margin-left: 0;
+        margin-right: 0;
+        height: 100vh;
+        box-sizing: border-box;
+        overflow-y: auto;
+        padding: calc(#{$topSpacing} + 3.75rem) var(--note-column-pad-x) 2rem;
+        border-left: 1px solid var(--lightgray);
+        background: var(--light);
+        box-shadow: -10px 0 24px rgba(0, 0, 0, 0.04);
+        scroll-snap-align: start;
+      }
+
+      > .note-column .page-title,
+      > .note-column .breadcrumb-container {
+        display: none;
+      }
+
+      > .note-column .page-header {
+        margin-top: 0;
+      }
+    }
+
+    .note-column-previous .page-footer {
+      display: none;
+    }
+
+    .note-column-loading {
+      color: var(--gray);
+      padding-top: $topSpacing;
+    }
+  }
+}
+
+@media all and not ($desktop) {
+  #note-path {
+    display: flex;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    min-width: 0;
+    margin: 0.5rem 0 1rem;
+    max-height: 5.4rem;
+    overflow-y: hidden;
+    white-space: normal;
+
+    &[data-expanded="true"] {
+      max-height: none;
+    }
+
+    a,
+    .note-path-expand {
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--secondary);
+      font-size: 0.86rem;
+      line-height: 1.35rem;
+      font-weight: $semiBoldWeight;
+
+      &[aria-current="page"] {
+        color: var(--dark);
+      }
+    }
+
+    .note-path-expand {
+      border: 0;
+      padding: 0;
+      background: transparent;
+      font-family: inherit;
+      cursor: pointer;
+    }
+
+    .note-path-separator {
+      flex: 0 0 auto;
+      color: var(--gray);
+      font-size: 0.82rem;
+      line-height: 1.35rem;
+    }
+  }
+}
+
+@media all and ($desktop) {
+  #note-path {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-width: 0;
+    margin: 0.5rem 0 1rem;
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+
+    a {
+      flex: 0 0 auto;
+      max-width: 11rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--secondary);
+      font-size: 0.86rem;
+      line-height: 1.35rem;
+      font-weight: $semiBoldWeight;
+
+      &[aria-current="page"] {
+        color: var(--dark);
+      }
+    }
+
+    .note-path-separator {
+      flex: 0 0 auto;
+      color: var(--gray);
+      font-size: 0.82rem;
+    }
+  }
+}
+
 @media all and ($mobile) {
   .page > #quartz-body {
     .sidebar.right {
