@@ -1,3 +1,7 @@
+---
+publish: true
+rkey: 3mlzmzbuedt2c
+---
 I recently read this four-part blog post on [New Consensus](newconsensus.com) titled [Why Capitalism Can't Survive AI](https://www.newconsensus.com/blog/series/why-capitalism-cant-survive-ai). Overall a great piece, but it could go further!
 
 I was skeptical of the math at first, but the overall argument is sound. The economic shock that will result from AI is fundamentally different from historic economic shocks, and our current system is not prepared for it.  

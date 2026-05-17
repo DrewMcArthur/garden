@@ -1,3 +1,7 @@
+---
+publish: true
+rkey: 3mlzmzbh3wn2e
+---
 An essay I cite often from [wedontagree.net](wedontagree.net).
 
 [We Don't Agree on Capitalism: Demarcating the Red and Black](https://wedontagree.net/essays/we-dont-agree-on-capitalism-essay/)

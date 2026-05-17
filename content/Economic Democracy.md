@@ -1,3 +1,7 @@
+---
+publish: true
+rkey: 3mlzmzbaekv2s
+---
 [Wikipedia](https://en.wikipedia.org/wiki/Economic_democracy)
 
 We've concluded that government ought to be controlled democratically, but (in a Liberal Democracy) the economy cannot be.

@@ -1,3 +1,7 @@
+---
+publish: true
+rkey: 3mlzmzb6a472a
+---
 [Wikipedia](https://en.wikipedia.org/wiki/Rural_Electrification_Act)
 
 In the 1930s, electricity had reached much of urban life, but private investment had failed to bring electricity to rural areas.
