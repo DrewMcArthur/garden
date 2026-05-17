@@ -46,6 +46,7 @@ type LinkData = {
 
 type LinkRenderData = GraphicsInfo & {
   simulationData: LinkData
+  width: number
 }
 
 type NodeRenderData = GraphicsInfo & {
@@ -69,8 +70,41 @@ type TweenNode = {
   stop: () => void
 }
 
-async function renderGraph(graph: HTMLElement, fullSlug: FullSlug) {
+const paneStackParam = "stack"
+
+function slugFromLocation(): FullSlug {
+  let slug = decodeURIComponent(window.location.pathname).replace(/^\/+|\/+$/g, "")
+  slug = slug.replace(/\.html$/, "")
+  return (slug.length === 0 ? "index" : slug) as FullSlug
+}
+
+function getPanePath(): FullSlug[] {
+  const baseSlug = slugFromLocation()
+  const params = new URLSearchParams(window.location.search)
+  const stack = params.get(paneStackParam)
+  if (!stack) return [baseSlug]
+  return [
+    baseSlug,
+    ...(stack
+      .split("|")
+      .map((slug) => slug.trim())
+      .filter((slug) => slug.length > 0) as FullSlug[]),
+  ]
+}
+
+async function renderGraph(
+  graph: HTMLElement,
+  fullSlug: FullSlug,
+  openPath: FullSlug[] = [fullSlug],
+) {
   const slug = simplifySlug(fullSlug)
+  const path = openPath.length > 0 ? openPath.map((pathSlug) => simplifySlug(pathSlug)) : [slug]
+  const activePath = new Set(path)
+  const activePathEdges = new Set<string>()
+  for (let i = 0; i < path.length - 1; i++) {
+    activePathEdges.add(`${path[i]}->${path[i + 1]}`)
+    activePathEdges.add(`${path[i + 1]}->${path[i]}`)
+  }
   const visited = getVisited()
   removeAllChildren(graph)
 
@@ -147,6 +181,15 @@ async function renderGraph(graph: HTMLElement, fullSlug: FullSlug) {
     if (showTags) tags.forEach((tag) => neighbourhoodDepth.set(tag, 0))
   }
   const neighbourhood = new Set(neighbourhoodDepth.keys())
+  for (const pathSlug of activePath) {
+    if (validLinks.has(pathSlug)) {
+      neighbourhood.add(pathSlug)
+      neighbourhoodDepth.set(
+        pathSlug,
+        pathSlug === slug ? 0 : (neighbourhoodDepth.get(pathSlug) ?? 1),
+      )
+    }
+  }
 
   const nodes = [...neighbourhood].map((url) => {
     const text = url.startsWith("tags/") ? "#" + url.substring(5) : (data.get(url)?.title ?? url)
@@ -203,6 +246,8 @@ async function renderGraph(graph: HTMLElement, fullSlug: FullSlug) {
   const color = (d: NodeData) => {
     const isCurrent = d.id === slug
     if (isCurrent) {
+      return computedStyleMap["--dark"]
+    } else if (activePath.has(d.id)) {
       return computedStyleMap["--secondary"]
     } else if (visited.has(d.id) || d.id.startsWith("tags/")) {
       return computedStyleMap["--tertiary"]
@@ -215,18 +260,31 @@ async function renderGraph(graph: HTMLElement, fullSlug: FullSlug) {
     const numLinks = graphData.links.filter(
       (l) => l.source.id === d.id || l.target.id === d.id,
     ).length
-    return 2 + Math.sqrt(numLinks)
+    const pathBonus = activePath.has(d.id) ? 1.5 : 0
+    const currentBonus = d.id === slug ? 2.5 : 0
+    return 2 + Math.sqrt(numLinks) + pathBonus + currentBonus
   }
 
   function nodeDistanceOpacity(d: NodeData) {
+    if (d.id === slug) return 1
+    if (activePath.has(d.id)) return 0.92
     if (depth < 0) return 1
     if (d.depth <= 0) return 1
-    if (d.depth === 1) return 0.82
-    return Math.max(0.48, 1 - d.depth * 0.24)
+    if (d.depth === 1) return 0.68
+    if (d.depth === 2) return 0.44
+    return Math.max(0.24, 0.68 - d.depth * 0.18)
   }
 
   function linkDistanceOpacity(d: LinkData) {
+    if (activePathEdges.has(`${d.source.id}->${d.target.id}`)) return 1
+    if (d.source.id === slug || d.target.id === slug) return 0.72
     return Math.min(nodeDistanceOpacity(d.source), nodeDistanceOpacity(d.target))
+  }
+
+  function linkStrokeWidth(d: LinkData) {
+    if (activePathEdges.has(`${d.source.id}->${d.target.id}`)) return 2.6
+    if (d.source.id === slug || d.target.id === slug) return 1.35
+    return 1
   }
 
   let hoveredNodeId: string | null = null
@@ -265,21 +323,37 @@ async function renderGraph(graph: HTMLElement, fullSlug: FullSlug) {
 
   let dragStartTime = 0
   let dragging = false
+  function navigateToGraphNode(node: NodeData) {
+    const targ = resolveRelative(fullSlug, node.id)
+    const url = new URL(targ, window.location.toString())
+    if (window.spaOpenPane) {
+      window.spaOpenPane(url)
+    } else {
+      window.spaNavigate(url)
+    }
+  }
 
   function renderLinks() {
     tweens.get("link")?.stop()
     const tweenGroup = new TweenGroup()
 
     for (const l of linkRenderData) {
-      let alpha = linkDistanceOpacity(l.simulationData)
+      const linkData = l.simulationData
+      const isPathLink = activePathEdges.has(`${linkData.source.id}->${linkData.target.id}`)
+      let alpha = linkDistanceOpacity(linkData)
 
       // if we are hovering over a node, we want to highlight the immediate neighbours
       // with full alpha and the rest with default alpha
       if (hoveredNodeId) {
-        alpha = l.active ? 1 : Math.min(alpha, 0.2)
+        alpha = l.active || isPathLink ? 1 : Math.min(alpha, 0.2)
       }
 
-      l.color = l.active ? computedStyleMap["--gray"] : computedStyleMap["--lightgray"]
+      l.color = isPathLink
+        ? computedStyleMap["--dark"]
+        : l.active
+          ? computedStyleMap["--darkgray"]
+          : computedStyleMap["--lightgray"]
+      l.width = linkStrokeWidth(linkData)
       tweenGroup.add(new Tweened<LinkRenderData>(l).to({ alpha }, 200))
     }
 
@@ -298,10 +372,21 @@ async function renderGraph(graph: HTMLElement, fullSlug: FullSlug) {
 
     const defaultScale = 1 / scale
     const activeScale = defaultScale * 1.1
+    const currentScale = defaultScale * 1.18
     for (const n of nodeRenderData) {
       const nodeId = n.simulationData.id
 
-      if (hoveredNodeId === nodeId) {
+      if (nodeId === slug) {
+        tweenGroup.add(
+          new Tweened<Text>(n.label).to(
+            {
+              alpha: 1,
+              scale: { x: currentScale, y: currentScale },
+            },
+            100,
+          ),
+        )
+      } else if (hoveredNodeId === nodeId || activePath.has(nodeId)) {
         tweenGroup.add(
           new Tweened<Text>(n.label).to(
             {
@@ -342,7 +427,7 @@ async function renderGraph(graph: HTMLElement, fullSlug: FullSlug) {
 
       // if we are hovering over a node, we want to highlight the immediate neighbours
       if (hoveredNodeId !== null && focusOnHover) {
-        alpha = n.active ? 1 : Math.min(alpha, 0.2)
+        alpha = n.active || activePath.has(n.simulationData.id) ? 1 : Math.min(alpha, 0.2)
       }
 
       tweenGroup.add(new Tweened<Graphics>(n.gfx, tweenGroup).to({ alpha }, 200))
@@ -461,6 +546,7 @@ async function renderGraph(graph: HTMLElement, fullSlug: FullSlug) {
       gfx,
       color: computedStyleMap["--lightgray"],
       alpha: linkDistanceOpacity(l),
+      width: linkStrokeWidth(l),
       active: false,
     }
 
@@ -500,16 +586,14 @@ async function renderGraph(graph: HTMLElement, fullSlug: FullSlug) {
           // if the time between mousedown and mouseup is short, we consider it a click
           if (Date.now() - dragStartTime < 500) {
             const node = graphData.nodes.find((n) => n.id === event.subject.id) as NodeData
-            const targ = resolveRelative(fullSlug, node.id)
-            window.spaNavigate(new URL(targ, window.location.toString()))
+            navigateToGraphNode(node)
           }
         }),
     )
   } else {
     for (const node of nodeRenderData) {
       node.gfx.on("click", () => {
-        const targ = resolveRelative(fullSlug, node.simulationData.id)
-        window.spaNavigate(new URL(targ, window.location.toString()))
+        navigateToGraphNode(node.simulationData)
       })
     }
   }
@@ -559,7 +643,7 @@ async function renderGraph(graph: HTMLElement, fullSlug: FullSlug) {
       l.gfx.moveTo(linkData.source.x! + width / 2, linkData.source.y! + height / 2)
       l.gfx
         .lineTo(linkData.target.x! + width / 2, linkData.target.y! + height / 2)
-        .stroke({ alpha: l.alpha, width: 1, color: l.color })
+        .stroke({ alpha: l.alpha, width: l.width, color: l.color })
     }
 
     tweens.forEach((t) => t.update(time))
@@ -594,28 +678,44 @@ function cleanupGlobalGraphs() {
 document.addEventListener("nav", async (e: CustomEventMap["nav"]) => {
   const slug = e.detail.url
   addToVisited(simplifySlug(slug))
+  let currentPath = getPanePath()
+  for (const pathSlug of currentPath) {
+    addToVisited(simplifySlug(pathSlug))
+  }
 
   async function renderLocalGraph() {
     cleanupLocalGraphs()
+    const focusedSlug = currentPath[currentPath.length - 1] ?? slug
     const localGraphContainers = document.getElementsByClassName("graph-container")
     for (const container of localGraphContainers) {
-      localGraphCleanups.push(await renderGraph(container as HTMLElement, slug))
+      localGraphCleanups.push(await renderGraph(container as HTMLElement, focusedSlug, currentPath))
     }
   }
 
   await renderLocalGraph()
+  const handlePaneChange = async (e: CustomEventMap["panechange"]) => {
+    currentPath = e.detail.path
+    for (const pathSlug of currentPath) {
+      addToVisited(simplifySlug(pathSlug))
+    }
+    await renderLocalGraph()
+  }
+
   const handleThemeChange = () => {
     void renderLocalGraph()
   }
 
+  document.addEventListener("panechange", handlePaneChange)
   document.addEventListener("themechange", handleThemeChange)
   window.addCleanup(() => {
+    document.removeEventListener("panechange", handlePaneChange)
     document.removeEventListener("themechange", handleThemeChange)
   })
 
   const containers = [...document.getElementsByClassName("global-graph-outer")] as HTMLElement[]
   async function renderGlobalGraph() {
-    const slug = getFullSlug(window)
+    const path = getPanePath()
+    const slug = path[path.length - 1] ?? getFullSlug(window)
     for (const container of containers) {
       container.classList.add("active")
       const sidebar = container.closest(".sidebar") as HTMLElement
@@ -626,7 +726,7 @@ document.addEventListener("nav", async (e: CustomEventMap["nav"]) => {
       const graphContainer = container.querySelector(".global-graph-container") as HTMLElement
       registerEscapeHandler(container, hideGlobalGraph)
       if (graphContainer) {
-        globalGraphCleanups.push(await renderGraph(graphContainer, slug))
+        globalGraphCleanups.push(await renderGraph(graphContainer, slug, path))
       }
     }
   }

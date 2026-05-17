@@ -1,3 +1,8 @@
+---
+publish: true
+rkey: 3mlzmzck5pk2t
+---
+
 - [Inflationary Equity](https://writing.drewmca.net/3lvhavefoac2b)
 - [Platforms, Protocols, and Permissibility](https://writing.drewmca.net/3lvmlnfsq6k2h)
 - [Precursor Ramblings to PMsky](https://writing.drewmca.net/3lvmmqrzyl22h)

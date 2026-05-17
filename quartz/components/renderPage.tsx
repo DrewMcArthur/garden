@@ -266,25 +266,30 @@ export function renderPage(
         <div id="quartz-root" class="page">
           <Body {...componentData}>
             {LeftComponent}
-            <div class="center">
-              <div class="page-header">
-                <Header {...componentData}>
-                  {header.map((HeaderComponent) => (
-                    <HeaderComponent {...componentData} />
-                  ))}
-                </Header>
-                <div class="popover-hint">
-                  {beforeBody.map((BodyComponent) => (
-                    <BodyComponent {...componentData} />
-                  ))}
+            <div id="note-track-shell">
+              <div id="note-track-chrome" aria-live="polite"></div>
+              <div id="note-column-track" aria-live="polite">
+                <div class="center note-column note-column-active">
+                  <div class="page-header">
+                    <Header {...componentData}>
+                      {header.map((HeaderComponent) => (
+                        <HeaderComponent {...componentData} />
+                      ))}
+                    </Header>
+                    <div class="popover-hint">
+                      {beforeBody.map((BodyComponent) => (
+                        <BodyComponent {...componentData} />
+                      ))}
+                    </div>
+                  </div>
+                  <Content {...componentData} />
+                  <hr />
+                  <div class="page-footer">
+                    {afterBody.map((BodyComponent) => (
+                      <BodyComponent {...componentData} />
+                    ))}
+                  </div>
                 </div>
-              </div>
-              <Content {...componentData} />
-              <hr />
-              <div class="page-footer">
-                {afterBody.map((BodyComponent) => (
-                  <BodyComponent {...componentData} />
-                ))}
               </div>
             </div>
             {RightComponent}

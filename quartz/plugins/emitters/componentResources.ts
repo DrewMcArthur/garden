@@ -258,6 +258,7 @@ function addGlobalPageResources(ctx: BuildCtx, componentResources: ComponentReso
   } else {
     componentResources.afterDOMLoaded.push(`
       window.spaNavigate = (url, _) => window.location.assign(url)
+      window.spaOpenPane = (url) => window.location.assign(url)
       window.addCleanup = () => {}
       const event = new CustomEvent("nav", { detail: { url: document.body.dataset.slug } })
       document.dispatchEvent(event)

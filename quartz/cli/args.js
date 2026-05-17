@@ -106,3 +106,11 @@ export const BuildArgv = {
     describe: "how many threads to use to parse notes",
   },
 }
+
+export const PullBacklinksArgv = {
+  ...CommonArgv,
+  concurrency: {
+    number: true,
+    describe: "how many threads to use to parse notes",
+  },
+}

@@ -23,10 +23,10 @@ export const defaultContentPageLayout: PageLayout = {
       condition: (page) => page.fileData.slug !== "index",
     }),
     Component.ArticleTitle(),
-    Component.ContentMeta(),
+    Component.ContentMeta({ showReadingTime: false }),
     Component.TagList(),
   ],
-  left: [Component.Darkmode()],
+  left: [],
   right: [
     Component.Flex({
       direction: "column",
@@ -53,7 +53,7 @@ export const defaultListPageLayout: PageLayout = {
     Component.PageTitle(),
     Component.Breadcrumbs(),
     Component.ArticleTitle(),
-    Component.ContentMeta(),
+    Component.ContentMeta({ showReadingTime: false }),
   ],
   left: [
     Component.MobileOnly(Component.Spacer()),

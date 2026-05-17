@@ -1,0 +1,8 @@
+---
+publish: true
+rkey: 3mlzmzblahs24
+---
+
+I'm surprised there isn't a wikipedia page for this, but here's [investopedia on deflationary spirals and government spending](https://www.investopedia.com/terms/d/deflationary-spiral.asp).
+
+A demand spiral is the negative feedback loop in the economy resulting from layoffs. Workers with less money spend less. Businesses then make less money, since people are spending less, and have to layoff more workers. Now less workers have jobs and money to spend, which leads to more layoffs, and so on.

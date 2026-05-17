@@ -30,6 +30,8 @@ import {
   version,
   fp,
   cacheFile,
+  pullBacklinksCacheFile,
+  pullBacklinksFp,
   cwd,
 } from "./constants.js"
 
@@ -228,19 +230,57 @@ See the [documentation](https://quartz.jzhao.xyz) for how to get started.
 `)
 }
 
-/**
- * Handles `npx quartz build`
- * @param {*} argv arguments for `build`
- */
-export async function handleBuild(argv) {
-  if (argv.serve) {
-    argv.watch = true
-  }
+function quartzEsbuildPlugins() {
+  return [
+    sassPlugin({
+      type: "css-text",
+      cssImports: true,
+    }),
+    sassPlugin({
+      filter: /\.inline\.scss$/,
+      type: "css",
+      cssImports: true,
+    }),
+    {
+      name: "inline-script-loader",
+      setup(build) {
+        build.onLoad({ filter: /\.inline\.(ts|js)$/ }, async (args) => {
+          let text = await promises.readFile(args.path, "utf8")
 
-  console.log(`\n${styleText(["bgGreen", "black"], ` Quartz v${version} `)} \n`)
-  const ctx = await esbuild.context({
-    entryPoints: [fp],
-    outfile: cacheFile,
+          // remove default exports that we manually inserted
+          text = text.replace("export default", "")
+          text = text.replace("export", "")
+
+          const sourcefile = path.relative(path.resolve("."), args.path)
+          const resolveDir = path.dirname(sourcefile)
+          const transpiled = await esbuild.build({
+            stdin: {
+              contents: text,
+              loader: "ts",
+              resolveDir,
+              sourcefile,
+            },
+            write: false,
+            bundle: true,
+            minify: true,
+            platform: "browser",
+            format: "esm",
+          })
+          const rawMod = transpiled.outputFiles[0].text
+          return {
+            contents: rawMod,
+            loader: "text",
+          }
+        })
+      },
+    },
+  ]
+}
+
+function quartzEsbuildContext(entryPoint, outfile) {
+  return esbuild.context({
+    entryPoints: [entryPoint],
+    outfile,
     bundle: true,
     keepNames: true,
     minifyWhitespace: true,
@@ -253,51 +293,21 @@ export async function handleBuild(argv) {
     metafile: true,
     sourcemap: true,
     sourcesContent: false,
-    plugins: [
-      sassPlugin({
-        type: "css-text",
-        cssImports: true,
-      }),
-      sassPlugin({
-        filter: /\.inline\.scss$/,
-        type: "css",
-        cssImports: true,
-      }),
-      {
-        name: "inline-script-loader",
-        setup(build) {
-          build.onLoad({ filter: /\.inline\.(ts|js)$/ }, async (args) => {
-            let text = await promises.readFile(args.path, "utf8")
-
-            // remove default exports that we manually inserted
-            text = text.replace("export default", "")
-            text = text.replace("export", "")
-
-            const sourcefile = path.relative(path.resolve("."), args.path)
-            const resolveDir = path.dirname(sourcefile)
-            const transpiled = await esbuild.build({
-              stdin: {
-                contents: text,
-                loader: "ts",
-                resolveDir,
-                sourcefile,
-              },
-              write: false,
-              bundle: true,
-              minify: true,
-              platform: "browser",
-              format: "esm",
-            })
-            const rawMod = transpiled.outputFiles[0].text
-            return {
-              contents: rawMod,
-              loader: "text",
-            }
-          })
-        },
-      },
-    ],
+    plugins: quartzEsbuildPlugins(),
   })
+}
+
+/**
+ * Handles `npx quartz build`
+ * @param {*} argv arguments for `build`
+ */
+export async function handleBuild(argv) {
+  if (argv.serve) {
+    argv.watch = true
+  }
+
+  console.log(`\n${styleText(["bgGreen", "black"], ` Quartz v${version} `)} \n`)
+  const ctx = await quartzEsbuildContext(fp, cacheFile)
 
   const buildMutex = new Mutex()
   let lastBuildMs = 0
@@ -484,6 +494,25 @@ export async function handleBuild(argv) {
 
     console.log(styleText("gray", "hint: exit with ctrl+c"))
   }
+}
+
+export async function handlePullBacklinks(argv) {
+  console.log(`\n${styleText(["bgGreen", "black"], ` Quartz v${version} `)} \n`)
+  const ctx = await quartzEsbuildContext(pullBacklinksFp, pullBacklinksCacheFile)
+
+  await ctx.rebuild().catch((err) => {
+    console.error(
+      `${styleText("red", "Couldn't parse Quartz backlink puller:")} ${pullBacklinksFp}`,
+    )
+    console.log(`Reason: ${styleText("gray", err)}`)
+    process.exit(1)
+  })
+
+  const { default: pullBacklinks } = await import(
+    `../../${pullBacklinksCacheFile}?update=${randomUUID()}`
+  )
+  await pullBacklinks(argv)
+  await ctx.dispose()
 }
 
 /**

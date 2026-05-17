@@ -9,6 +9,11 @@ import { ProcessedContent, QuartzPluginData } from "./vfile"
 import { visit } from "unist-util-visit"
 
 const CONSTELLATION_BASE = "https://constellation.microcosm.blue"
+const CONSTELLATION_USER_AGENT = "notes.drewmca.net build (@drewmca.net)"
+const CONSTELLATION_HEADERS = {
+  Accept: "application/json",
+  "User-Agent": CONSTELLATION_USER_AGENT,
+}
 const HANDLE_RESOLVER_BASE = "https://public.api.bsky.app"
 const APPVIEW_BASE = "https://public.api.bsky.app"
 const PLC_DIRECTORY_BASE = "https://plc.directory"
@@ -19,6 +24,8 @@ const DEFAULT_SOURCE_COLLECTIONS = [
   "pub.leaflet.comment",
 ] as const
 const DEFAULT_BACKLINK_LIMIT = 12
+const BACKLINK_CONTEXT_VERSION = 1
+const DEFAULT_BACKLINK_CONTEXT_FILE = path.join(".quartz-cache", "atproto-backlinks-context.json")
 const GENERATED_COLLECTIONS = new Set([
   "site.standard.document",
   "app.bsky.feed.post",
@@ -41,6 +48,18 @@ type BacklinksResponse = {
   total?: number
   records?: ConstellationRecord[]
   cursor?: string | null
+}
+
+type AtprotoBacklinksContext = {
+  version: typeof BACKLINK_CONTEXT_VERSION
+  generatedAt: string
+  subjects: Record<string, AtprotoBacklink[]>
+  externalUrls: Record<string, string | null>
+  repoDids: Record<string, string>
+  didPdsEndpoints: Record<string, string | null>
+  didHandles: Record<string, string | null>
+  records: Record<string, Record<string, unknown> | null>
+  posts: Record<string, Record<string, unknown>>
 }
 
 type BacklinkTargetKind = "at-uri" | "url"
@@ -132,6 +151,28 @@ const didPdsCache = new Map<string, Promise<string | null>>()
 const didHandleCache = new Map<string, Promise<string | null>>()
 const recordCache = new Map<string, Promise<Record<string, unknown> | null>>()
 const externalUrlAtUriCache = new Map<string, Promise<string | null>>()
+let activeBacklinkContext: AtprotoBacklinksContext | undefined
+let activeBacklinkContextWritable = false
+let activeAtprotoNetworkAllowed = false
+let warnedMissingBacklinkContext = false
+
+function createEmptyAtprotoBacklinksContext(): AtprotoBacklinksContext {
+  return {
+    version: BACKLINK_CONTEXT_VERSION,
+    generatedAt: new Date().toISOString(),
+    subjects: {},
+    externalUrls: {},
+    repoDids: {},
+    didPdsEndpoints: {},
+    didHandles: {},
+    records: {},
+    posts: {},
+  }
+}
+
+function hasOwn<T extends object>(obj: T, key: PropertyKey): key is keyof T {
+  return Object.prototype.hasOwnProperty.call(obj, key)
+}
 
 function getFrontmatterString(fileData: QuartzPluginData, key: string): string | undefined {
   const value = fileData.frontmatter?.[key]
@@ -162,6 +203,46 @@ function allowlistPath(): string {
 
 function discoveredDidsReportPath(): string {
   return path.resolve(process.cwd(), DISCOVERED_DIDS_REPORT_FILE)
+}
+
+function backlinkContextPath(contextFile: string): string {
+  return path.resolve(process.cwd(), contextFile)
+}
+
+async function readBacklinkContext(
+  contextFile: string,
+): Promise<AtprotoBacklinksContext | undefined> {
+  try {
+    const raw = await readFile(backlinkContextPath(contextFile), "utf8")
+    const parsed = JSON.parse(raw) as Partial<AtprotoBacklinksContext>
+    if (parsed.version !== BACKLINK_CONTEXT_VERSION) return undefined
+
+    return {
+      version: BACKLINK_CONTEXT_VERSION,
+      generatedAt: typeof parsed.generatedAt === "string" ? parsed.generatedAt : "",
+      subjects: parsed.subjects ?? {},
+      externalUrls: parsed.externalUrls ?? {},
+      repoDids: parsed.repoDids ?? {},
+      didPdsEndpoints: parsed.didPdsEndpoints ?? {},
+      didHandles: parsed.didHandles ?? {},
+      records: parsed.records ?? {},
+      posts: parsed.posts ?? {},
+    }
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code
+    if (code !== "ENOENT") {
+      console.warn(styleText("yellow", `[ATProto] failed to read backlink context`))
+      console.warn(err)
+    }
+
+    return undefined
+  }
+}
+
+async function writeBacklinkContext(contextFile: string, context: AtprotoBacklinksContext) {
+  const filePath = backlinkContextPath(contextFile)
+  await mkdir(path.dirname(filePath), { recursive: true })
+  await writeFile(filePath, `${JSON.stringify(context, null, 2)}\n`)
 }
 
 async function readAllowedDids(): Promise<Record<string, boolean>> {
@@ -245,15 +326,25 @@ async function resolveAtUriForExternalUrl(rawUrl: string): Promise<string | null
 
   const cached = externalUrlAtUriCache.get(normalizedUrl)
   if (cached) return cached
+  if (activeBacklinkContext && hasOwn(activeBacklinkContext.externalUrls, normalizedUrl)) {
+    return activeBacklinkContext.externalUrls[normalizedUrl]
+  }
+  if (!activeAtprotoNetworkAllowed) return null
 
   const pending = (async () => {
+    let resolved: string | null = null
     try {
       const response = await fetch(normalizedUrl, { headers: { Accept: "text/html" } })
       if (!response.ok) return null
       const html = await response.text()
-      return extractAtUriFromHtml(html)
+      resolved = extractAtUriFromHtml(html)
+      return resolved
     } catch {
       return null
+    } finally {
+      if (activeBacklinkContextWritable && activeBacklinkContext) {
+        activeBacklinkContext.externalUrls[normalizedUrl] = resolved
+      }
     }
   })()
 
@@ -292,8 +383,13 @@ function extractDocumentSnippet(value: Record<string, unknown>): string | undefi
 async function resolvePdsEndpointForDid(did: string): Promise<string | null> {
   const cached = didPdsCache.get(did)
   if (cached) return cached
+  if (activeBacklinkContext && hasOwn(activeBacklinkContext.didPdsEndpoints, did)) {
+    return activeBacklinkContext.didPdsEndpoints[did]
+  }
+  if (!activeAtprotoNetworkAllowed) return null
 
   const pending = (async () => {
+    let resolved: string | null = null
     try {
       const response = await fetch(`${PLC_DIRECTORY_BASE}/${did}`, {
         headers: { Accept: "application/json" },
@@ -305,9 +401,14 @@ async function resolvePdsEndpointForDid(did: string): Promise<string | null> {
       const pdsService = payload.service?.find(
         (service) => service.type === "AtprotoPersonalDataServer",
       )
-      return pdsService?.serviceEndpoint ?? null
+      resolved = pdsService?.serviceEndpoint ?? null
+      return resolved
     } catch {
       return null
+    } finally {
+      if (activeBacklinkContextWritable && activeBacklinkContext) {
+        activeBacklinkContext.didPdsEndpoints[did] = resolved
+      }
     }
   })()
 
@@ -318,8 +419,13 @@ async function resolvePdsEndpointForDid(did: string): Promise<string | null> {
 async function resolveHandleForDid(did: string): Promise<string | null> {
   const cached = didHandleCache.get(did)
   if (cached) return cached
+  if (activeBacklinkContext && hasOwn(activeBacklinkContext.didHandles, did)) {
+    return activeBacklinkContext.didHandles[did]
+  }
+  if (!activeAtprotoNetworkAllowed) return null
 
   const pending = (async () => {
+    let resolved: string | null = null
     try {
       const response = await fetch(`${PLC_DIRECTORY_BASE}/${did}`, {
         headers: { Accept: "application/json" },
@@ -327,9 +433,14 @@ async function resolveHandleForDid(did: string): Promise<string | null> {
       if (!response.ok) return null
       const payload = (await response.json()) as { alsoKnownAs?: string[] }
       const atIdentifier = payload.alsoKnownAs?.find((identifier) => identifier.startsWith("at://"))
-      return atIdentifier ? atIdentifier.slice("at://".length) : null
+      resolved = atIdentifier ? atIdentifier.slice("at://".length) : null
+      return resolved
     } catch {
       return null
+    } finally {
+      if (activeBacklinkContextWritable && activeBacklinkContext) {
+        activeBacklinkContext.didHandles[did] = resolved
+      }
     }
   })()
 
@@ -345,6 +456,10 @@ async function fetchRepoRecord(
   const cacheKey = `${did}/${collection}/${rkey}`
   const cached = recordCache.get(cacheKey)
   if (cached) return cached
+  if (activeBacklinkContext && hasOwn(activeBacklinkContext.records, cacheKey)) {
+    return activeBacklinkContext.records[cacheKey]
+  }
+  if (!activeAtprotoNetworkAllowed) return null
 
   const pending = (async () => {
     const pdsEndpoint = await resolvePdsEndpointForDid(did)
@@ -359,7 +474,12 @@ async function fetchRepoRecord(
     if (!response.ok) return null
     const payload = (await response.json()) as { value?: Record<string, unknown> }
     return payload.value ?? null
-  })()
+  })().then((resolved) => {
+    if (activeBacklinkContextWritable && activeBacklinkContext) {
+      activeBacklinkContext.records[cacheKey] = resolved
+    }
+    return resolved
+  })
 
   recordCache.set(cacheKey, pending)
   return pending
@@ -370,6 +490,14 @@ async function resolveRepoDid(repo: string): Promise<string> {
 
   const cachedDid = repoDidCache.get(repo)
   if (cachedDid) return cachedDid
+  if (activeBacklinkContext && hasOwn(activeBacklinkContext.repoDids, repo)) {
+    return activeBacklinkContext.repoDids[repo]
+  }
+  if (!activeAtprotoNetworkAllowed) {
+    throw new Error(
+      `resolveHandle requires network for ${repo}; use a DID or refresh backlink context`,
+    )
+  }
 
   const resolveUrl = new URL("/xrpc/com.atproto.identity.resolveHandle", HANDLE_RESOLVER_BASE)
   resolveUrl.searchParams.set("handle", repo)
@@ -385,6 +513,9 @@ async function resolveRepoDid(repo: string): Promise<string> {
   }
 
   repoDidCache.set(repo, payload.did)
+  if (activeBacklinkContextWritable && activeBacklinkContext) {
+    activeBacklinkContext.repoDids[repo] = payload.did
+  }
   return payload.did
 }
 
@@ -403,10 +534,11 @@ function parseSourceSpecs(payload: SourceCountsResponse): string[] {
 export function normalizeAtprotoBacklinksConfig(cfg?: AtprotoBacklinksConfiguration): Required<
   Pick<
     AtprotoBacklinksConfiguration,
-    "repo" | "collection" | "sourceCollections" | "limit" | "emitHttpHeader"
+    "repo" | "collection" | "sourceCollections" | "limit" | "emitHttpHeader" | "contextFile"
   >
 > & {
   enabled: boolean
+  allowNetwork: boolean
 } {
   return {
     enabled: cfg?.enabled ?? true,
@@ -415,6 +547,9 @@ export function normalizeAtprotoBacklinksConfig(cfg?: AtprotoBacklinksConfigurat
     sourceCollections: cfg?.sourceCollections ?? [...DEFAULT_SOURCE_COLLECTIONS],
     limit: cfg?.limit ?? DEFAULT_BACKLINK_LIMIT,
     emitHttpHeader: cfg?.emitHttpHeader ?? false,
+    contextFile:
+      cfg?.contextFile ?? process.env.QUARTZ_ATPROTO_CONTEXT_FILE ?? DEFAULT_BACKLINK_CONTEXT_FILE,
+    allowNetwork: cfg?.allowNetwork ?? process.env.QUARTZ_ATPROTO_ALLOW_NETWORK === "true",
   }
 }
 
@@ -426,12 +561,16 @@ async function fetchBacklinksForSubject(
   const cacheKey = `${target.kind}:${target.value}|${sourceCollections.join(",")}|${limit}`
   const existing = subjectBacklinksCache.get(cacheKey)
   if (existing) return existing
+  if (activeBacklinkContext && hasOwn(activeBacklinkContext.subjects, cacheKey)) {
+    return activeBacklinkContext.subjects[cacheKey]
+  }
+  if (!activeAtprotoNetworkAllowed) return []
 
   const pending = (async () => {
     const sourceUrl = new URL("/links/all", CONSTELLATION_BASE)
     sourceUrl.searchParams.set("target", target.value)
 
-    const sourceResp = await fetch(sourceUrl, { headers: { Accept: "application/json" } })
+    const sourceResp = await fetch(sourceUrl, { headers: CONSTELLATION_HEADERS })
     if (!sourceResp.ok) {
       throw new Error(`links/all failed for ${target.value}: ${sourceResp.status}`)
     }
@@ -449,7 +588,7 @@ async function fetchBacklinksForSubject(
         backlinksUrl.searchParams.set("source", source)
         backlinksUrl.searchParams.set("limit", `${limit}`)
 
-        const backlinksResp = await fetch(backlinksUrl, { headers: { Accept: "application/json" } })
+        const backlinksResp = await fetch(backlinksUrl, { headers: CONSTELLATION_HEADERS })
         if (!backlinksResp.ok) return []
 
         const payload = (await backlinksResp.json()) as BacklinksResponse
@@ -477,7 +616,11 @@ async function fetchBacklinksForSubject(
       }
     }
 
-    return [...deduped.values()]
+    const backlinks = [...deduped.values()]
+    if (activeBacklinkContextWritable && activeBacklinkContext) {
+      activeBacklinkContext.subjects[cacheKey] = backlinks
+    }
+    return backlinks
   })()
     .catch((err) => {
       console.warn(styleText("yellow", `[ATProto] failed to fetch backlinks for ${target.value}`))
@@ -538,11 +681,46 @@ async function enrichBlueskyBacklinks(backlinks: AtprotoBacklink[]): Promise<Atp
 
   const postUris = backlinks.map((backlink) => backlink.uri)
   const chunks: string[][] = []
-  for (let i = 0; i < postUris.length; i += 25) {
-    chunks.push(postUris.slice(i, i + 25))
+  const postMap = new Map<string, Record<string, unknown>>()
+  const missingPostUris = postUris.filter((uri) => {
+    const cached = activeBacklinkContext?.posts[uri]
+    if (cached) {
+      postMap.set(uri, cached)
+      return false
+    }
+
+    return true
+  })
+
+  if (!activeAtprotoNetworkAllowed) {
+    return backlinks.map((backlink) => {
+      const post = postMap.get(backlink.uri)
+      if (!post) return backlink
+
+      const author = (post.author as Record<string, unknown> | undefined) ?? {}
+      const record = (post.record as Record<string, unknown> | undefined) ?? {}
+      const embed = (post.embed as Record<string, unknown> | undefined) ?? {}
+      const external = (embed.external as Record<string, unknown> | undefined) ?? {}
+
+      return {
+        ...backlink,
+        actorHandle: typeof author.handle === "string" ? author.handle : undefined,
+        actorDisplayName: typeof author.displayName === "string" ? author.displayName : undefined,
+        postText: typeof record.text === "string" ? truncateText(record.text, 220) : undefined,
+        postExternalTitle:
+          typeof external.title === "string" ? truncateText(external.title, 120) : undefined,
+        postExternalDescription:
+          typeof external.description === "string"
+            ? truncateText(external.description, 200)
+            : undefined,
+      }
+    })
   }
 
-  const postMap = new Map<string, Record<string, unknown>>()
+  for (let i = 0; i < missingPostUris.length; i += 25) {
+    chunks.push(missingPostUris.slice(i, i + 25))
+  }
+
   await Promise.all(
     chunks.map(async (chunk) => {
       const url = new URL("/xrpc/app.bsky.feed.getPosts", APPVIEW_BASE)
@@ -557,6 +735,9 @@ async function enrichBlueskyBacklinks(backlinks: AtprotoBacklink[]): Promise<Atp
         const uri = post.uri
         if (typeof uri === "string") {
           postMap.set(uri, post)
+          if (activeBacklinkContextWritable && activeBacklinkContext) {
+            activeBacklinkContext.posts[uri] = post
+          }
         }
       }
     }),
@@ -1282,8 +1463,29 @@ function buildGeneratedContent(
 export async function prepareAtprotoBacklinkContent(
   ctx: BuildCtx,
   content: ProcessedContent[],
+  opts: {
+    context?: AtprotoBacklinksContext
+    allowNetwork?: boolean
+    writeContext?: boolean
+    loadContext?: boolean
+  } = {},
 ): Promise<ProcessedContent[]> {
   const atprotoCfg = normalizeAtprotoBacklinksConfig(ctx.cfg.configuration.atprotoBacklinks)
+  activeAtprotoNetworkAllowed = opts.allowNetwork ?? atprotoCfg.allowNetwork
+  activeBacklinkContextWritable = opts.writeContext ?? false
+  activeBacklinkContext =
+    opts.context ??
+    (opts.loadContext === false ? undefined : await readBacklinkContext(atprotoCfg.contextFile))
+  if (!activeAtprotoNetworkAllowed && !activeBacklinkContext && !warnedMissingBacklinkContext) {
+    warnedMissingBacklinkContext = true
+    console.warn(
+      styleText(
+        "yellow",
+        `[ATProto] backlink context not found at ${atprotoCfg.contextFile}; run pnpm pull:backlinks to refresh it`,
+      ),
+    )
+  }
+
   const renderOptions = renderOptionsForCtx(ctx)
   await Promise.all(content.map(([, file]) => hydrateAtprotoBacklinks(ctx, file.data)))
   const allowedDids = await readAllowedDids()
@@ -1548,6 +1750,20 @@ export async function prepareAtprotoBacklinkContent(
   })
 
   return prepared
+}
+
+export async function pullAtprotoBacklinksContext(ctx: BuildCtx, content: ProcessedContent[]) {
+  const atprotoCfg = normalizeAtprotoBacklinksConfig(ctx.cfg.configuration.atprotoBacklinks)
+  const context = createEmptyAtprotoBacklinksContext()
+  await prepareAtprotoBacklinkContent(ctx, content, {
+    context,
+    allowNetwork: true,
+    writeContext: true,
+    loadContext: false,
+  })
+  context.generatedAt = new Date().toISOString()
+  await writeBacklinkContext(atprotoCfg.contextFile, context)
+  return context
 }
 
 declare module "vfile" {

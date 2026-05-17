@@ -161,6 +161,32 @@ ${stylesheet.join("\n\n")}
   --codeFont: "${getFontSpecificationName(theme.typography.code)}", ${DEFAULT_MONO};
 }
 
+@media (prefers-color-scheme: dark) {
+  :root {
+    --light: ${theme.colors.darkMode.light};
+    --lightgray: ${theme.colors.darkMode.lightgray};
+    --gray: ${theme.colors.darkMode.gray};
+    --darkgray: ${theme.colors.darkMode.darkgray};
+    --dark: ${theme.colors.darkMode.dark};
+    --secondary: ${theme.colors.darkMode.secondary};
+    --tertiary: ${theme.colors.darkMode.tertiary};
+    --highlight: ${theme.colors.darkMode.highlight};
+    --textHighlight: ${theme.colors.darkMode.textHighlight};
+  }
+}
+
+:root[saved-theme="light"] {
+  --light: ${theme.colors.lightMode.light};
+  --lightgray: ${theme.colors.lightMode.lightgray};
+  --gray: ${theme.colors.lightMode.gray};
+  --darkgray: ${theme.colors.lightMode.darkgray};
+  --dark: ${theme.colors.lightMode.dark};
+  --secondary: ${theme.colors.lightMode.secondary};
+  --tertiary: ${theme.colors.lightMode.tertiary};
+  --highlight: ${theme.colors.lightMode.highlight};
+  --textHighlight: ${theme.colors.lightMode.textHighlight};
+}
+
 :root[saved-theme="dark"] {
   --light: ${theme.colors.darkMode.light};
   --lightgray: ${theme.colors.darkMode.lightgray};

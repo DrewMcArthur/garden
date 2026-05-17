@@ -62,6 +62,7 @@ const config: QuartzConfig = {
       emitHttpHeader: true,
       sourceCollections: ["site.standard.document", "app.bsky.feed.post", "pub.leaflet.comment"],
       limit: 12,
+      contextFile: ".quartz-cache/atproto-backlinks-context.json",
     },
     theme,
   },

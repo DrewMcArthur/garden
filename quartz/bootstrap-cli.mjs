@@ -4,11 +4,12 @@ import { hideBin } from "yargs/helpers"
 import {
   handleBuild,
   handleCreate,
+  handlePullBacklinks,
   handleUpdate,
   handleRestore,
   handleSync,
 } from "./cli/handlers.js"
-import { CommonArgv, BuildArgv, CreateArgv, SyncArgv } from "./cli/args.js"
+import { CommonArgv, BuildArgv, CreateArgv, PullBacklinksArgv, SyncArgv } from "./cli/args.js"
 import { version } from "./cli/constants.js"
 
 yargs(hideBin(process.argv))
@@ -35,6 +36,14 @@ yargs(hideBin(process.argv))
   .command("build", "Build Quartz into a bundle of static HTML files", BuildArgv, async (argv) => {
     await handleBuild(argv)
   })
+  .command(
+    "pull-backlinks",
+    "Pull ATProto backlink context into a local JSON cache",
+    PullBacklinksArgv,
+    async (argv) => {
+      await handlePullBacklinks(argv)
+    },
+  )
   .showHelpOnFail(false)
   .help()
   .strict()

@@ -12,6 +12,7 @@ export declare global {
   }
   interface Window {
     spaNavigate(url: URL, isBack: boolean = false)
+    spaOpenPane(url: URL)
     addCleanup(fn: (...args: any[]) => void)
   }
 }
