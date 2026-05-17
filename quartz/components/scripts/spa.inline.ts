@@ -385,6 +385,22 @@ function scrollLatestNoteIntoView() {
   })
 }
 
+function scrollPathIndexIntoView(pathIndex: number) {
+  if (!shouldUsePanes()) return false
+
+  const column = document.querySelector<HTMLElement>(
+    `#note-column-track > .note-column[data-pane-index="${pathIndex - 1}"]`,
+  )
+  if (!column) return false
+
+  column.scrollIntoView({ block: "nearest", inline: "end", behavior: "smooth" })
+  requestAnimationFrame(() => {
+    const { path, trailingCrumb } = getFocusedPathView()
+    void renderNotePath(path, false, trailingCrumb)
+  })
+  return true
+}
+
 function getFocusedPathView(): { path: FullSlug[]; trailingCrumb?: TrailingCrumb } {
   const fullPath = getOpenPath()
   const track = document.getElementById("note-column-track")
@@ -534,6 +550,8 @@ function setPaneStack(slugs: FullSlug[], replace = false) {
     nextUrl.searchParams.delete(paneStackParam)
   }
 
+  if (nextUrl.toString() === window.location.toString()) return
+
   history[replace ? "replaceState" : "pushState"]({}, "", nextUrl)
   void renderNoteColumns(slugs)
 }
@@ -544,6 +562,8 @@ function openPane(url: URL, paneIndex?: number) {
   const openPath = getOpenPath()
   const existingIndex = openPath.lastIndexOf(slug)
   if (existingIndex !== -1) {
+    if (scrollPathIndexIntoView(existingIndex)) return
+
     setPaneStack(openPath.slice(1, existingIndex + 1))
     return
   }

@@ -16,6 +16,40 @@
   display: none;
 }
 
+@media all and (min-width: 801px) and (max-width: 1199px) {
+  .page > #quartz-body {
+    grid-template-columns: minmax(0, calc(100vw - #{$sidePanelWidth} - 2rem)) $sidePanelWidth;
+    grid-template-rows: auto auto;
+    grid-template-areas:
+      "grid-center grid-sidebar-right"
+      "grid-footer grid-sidebar-right";
+    column-gap: 0;
+
+    > .sidebar.left {
+      display: none;
+    }
+
+    > .sidebar.right {
+      position: sticky;
+      top: 0;
+      display: flex;
+      width: auto;
+      height: 100vh;
+      flex-direction: column;
+      padding: $topSpacing 2rem 2rem;
+
+      > * {
+        flex: initial;
+        max-height: none;
+      }
+
+      > .toc {
+        display: initial;
+      }
+    }
+  }
+}
+
 @media all and ($desktop) {
   body.pane-mode {
     --note-column-width: clamp(28rem, 34vw, 38rem);

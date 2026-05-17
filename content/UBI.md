@@ -1,0 +1,1 @@
+https://en.wikipedia.org/wiki/Universal_basic_income
