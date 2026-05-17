@@ -492,7 +492,7 @@ async function renderNoteColumns(slugs = getPaneStack()) {
 
   const path = getOpenPath()
   const previousPath = slugs.length > 0 ? path.slice(0, -1) : []
-  document.body.classList.toggle("pane-mode", slugs.length > 0)
+  document.body.classList.add("pane-mode")
 
   const previousColumns = previousPath.map((slug, index) => ({ index, slug })).reverse()
 

@@ -20,6 +20,7 @@
   body.pane-mode {
     --note-column-width: clamp(28rem, 34vw, 38rem);
     --note-column-pad-x: 1.15rem;
+    --note-track-chrome-height: calc(#{$topSpacing} + 4.75rem);
 
     overflow-x: hidden;
 
@@ -85,6 +86,8 @@
       flex-direction: row-reverse;
       height: 100vh;
       min-width: 0;
+      box-sizing: border-box;
+      padding-top: var(--note-track-chrome-height);
       overflow-x: auto;
       overflow-y: hidden;
       scroll-snap-type: x proximity;
@@ -96,10 +99,10 @@
         max-width: none;
         margin-left: 0;
         margin-right: 0;
-        height: 100vh;
+        height: 100%;
         box-sizing: border-box;
         overflow-y: auto;
-        padding: calc(#{$topSpacing} + 3.75rem) var(--note-column-pad-x) 2rem;
+        padding: 0 var(--note-column-pad-x) 2rem;
         border-left: 1px solid var(--lightgray);
         background: var(--light);
         box-shadow: -10px 0 24px rgba(0, 0, 0, 0.04);
