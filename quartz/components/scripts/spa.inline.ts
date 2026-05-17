@@ -553,6 +553,8 @@ function openPane(url: URL, paneIndex?: number) {
   setPaneStack(nextStack)
 }
 
+window.spaOpenPane = (url: URL) => openPane(url)
+
 function createRouter() {
   if (typeof window !== "undefined") {
     window.addEventListener("click", async (event) => {

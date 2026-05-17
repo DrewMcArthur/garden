@@ -323,6 +323,15 @@ async function renderGraph(
 
   let dragStartTime = 0
   let dragging = false
+  function navigateToGraphNode(node: NodeData) {
+    const targ = resolveRelative(fullSlug, node.id)
+    const url = new URL(targ, window.location.toString())
+    if (window.spaOpenPane) {
+      window.spaOpenPane(url)
+    } else {
+      window.spaNavigate(url)
+    }
+  }
 
   function renderLinks() {
     tweens.get("link")?.stop()
@@ -577,16 +586,14 @@ async function renderGraph(
           // if the time between mousedown and mouseup is short, we consider it a click
           if (Date.now() - dragStartTime < 500) {
             const node = graphData.nodes.find((n) => n.id === event.subject.id) as NodeData
-            const targ = resolveRelative(fullSlug, node.id)
-            window.spaNavigate(new URL(targ, window.location.toString()))
+            navigateToGraphNode(node)
           }
         }),
     )
   } else {
     for (const node of nodeRenderData) {
       node.gfx.on("click", () => {
-        const targ = resolveRelative(fullSlug, node.simulationData.id)
-        window.spaNavigate(new URL(targ, window.location.toString()))
+        navigateToGraphNode(node.simulationData)
       })
     }
   }

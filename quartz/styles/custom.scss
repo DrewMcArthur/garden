@@ -21,6 +21,7 @@
     --note-column-width: clamp(28rem, 34vw, 38rem);
     --note-column-pad-x: 1.15rem;
     --note-track-chrome-height: calc(#{$topSpacing} + 4.75rem);
+    --note-track-left-gutter: clamp(10rem, 24vw, 24rem);
 
     overflow-x: hidden;
 
@@ -54,6 +55,18 @@
       top: 0;
       height: 100vh;
       min-width: 0;
+
+      &::before {
+        content: "";
+        position: absolute;
+        z-index: 2;
+        top: var(--note-track-chrome-height);
+        bottom: 0;
+        left: 0;
+        width: 1px;
+        box-shadow: 18px 0 30px rgba(0, 0, 0, 0.055);
+        pointer-events: none;
+      }
     }
 
     #note-track-chrome {
@@ -92,6 +105,13 @@
       overflow-y: hidden;
       scroll-snap-type: x proximity;
       scroll-behavior: smooth;
+
+      &::after {
+        content: "";
+        flex: 0 0 var(--note-track-left-gutter);
+        height: 100%;
+        scroll-snap-align: start;
+      }
 
       > .note-column {
         flex: 0 0 var(--note-column-width);
