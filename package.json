@@ -16,6 +16,7 @@
     "quartz": "./quartz/bootstrap-cli.mjs",
     "build": "pnpm quartz build",
     "dev": "pnpm quartz build --serve",
+    "pull:backlinks": "pnpm quartz pull-backlinks",
     "docs": "npx quartz build --serve -d docs",
     "check": "tsc --noEmit && npx prettier . --check",
     "format": "npx prettier . --write",

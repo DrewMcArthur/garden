@@ -57,7 +57,7 @@ export type Analytics =
     }
 
 export interface AtprotoBacklinksConfiguration {
-  /** Toggle fetching ATProto backlinks during build */
+  /** Toggle ATProto backlink rendering during build */
   enabled?: boolean
   /** Repo DID or handle used to build note subjects from frontmatter `rkey` */
   repo: string
@@ -69,6 +69,10 @@ export interface AtprotoBacklinksConfiguration {
   sourceCollections?: string[]
   /** Max records fetched per source type */
   limit?: number
+  /** JSON context file used as the backlink cache for builds */
+  contextFile?: string
+  /** Allow build-time network fetches instead of using only the context file */
+  allowNetwork?: boolean
 }
 
 export interface GlobalConfiguration {
