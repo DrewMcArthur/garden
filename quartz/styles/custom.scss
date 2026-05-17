@@ -54,7 +54,7 @@
   body.pane-mode {
     --note-column-width: clamp(28rem, 34vw, 38rem);
     --note-column-pad-x: 1.15rem;
-    --note-track-chrome-height: calc(#{$topSpacing} + 4.75rem);
+    --note-track-chrome-height: calc(#{$topSpacing} + 5.5rem);
     --note-track-left-gutter: clamp(10rem, 24vw, 24rem);
 
     overflow-x: hidden;
@@ -87,7 +87,7 @@
     #note-track-shell {
       position: sticky;
       top: 0;
-      height: 100vh;
+      height: 90vh;
       min-width: 0;
 
       &::before {
@@ -131,7 +131,7 @@
     #note-column-track {
       display: flex;
       flex-direction: row-reverse;
-      height: 100vh;
+      height: 90vh;
       min-width: 0;
       box-sizing: border-box;
       padding-top: var(--note-track-chrome-height);
