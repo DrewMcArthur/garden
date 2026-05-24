@@ -1121,6 +1121,14 @@ function leafletFacetHasCode(features: Array<Record<string, unknown>>): boolean 
   return features.some((feature) => feature.$type === "pub.leaflet.richtext.facet#code")
 }
 
+function leafletFacetHasBold(features: Array<Record<string, unknown>>): boolean {
+  return features.some((feature) => feature.$type === "pub.leaflet.richtext.facet#bold")
+}
+
+function leafletFacetHasItalic(features: Array<Record<string, unknown>>): boolean {
+  return features.some((feature) => feature.$type === "pub.leaflet.richtext.facet#italic")
+}
+
 function hostFromConfigValue(value?: string): string | undefined {
   if (!value || value.includes(" ")) return undefined
 
@@ -1216,6 +1224,12 @@ function renderLeafletText(
     if (leafletFacetHasCode(features)) {
       segmentNode = element("code", {}, [segmentNode])
     }
+    if (leafletFacetHasBold(features)) {
+      segmentNode = element("strong", {}, [segmentNode])
+    }
+    if (leafletFacetHasItalic(features)) {
+      segmentNode = element("em", {}, [segmentNode])
+    }
 
     if (href) {
       segmentNode = element("a", linkPropertiesForHref(href, options), [segmentNode])
@@ -1248,7 +1262,12 @@ function leafletPlaintext(backlink: AtprotoBacklink): string | undefined {
     for (const blockWrapper of pageBlocks) {
       const block = (blockWrapper as { block?: Record<string, unknown> }).block
       const plaintext = block?.plaintext
-      if (block?.$type === "pub.leaflet.blocks.text" && typeof plaintext === "string") {
+      if (
+        (block?.$type === "pub.leaflet.blocks.text" ||
+          block?.$type === "pub.leaflet.blocks.header" ||
+          block?.$type === "pub.leaflet.blocks.code") &&
+        typeof plaintext === "string"
+      ) {
         blocks.push(plaintext)
       }
     }
@@ -1292,6 +1311,14 @@ function renderLeafletContent(
       const plaintext = block?.plaintext
       if (block?.$type === "pub.leaflet.blocks.text" && typeof plaintext === "string") {
         children.push(paragraph(renderLeafletText(plaintext, block.facets, options)))
+      } else if (block?.$type === "pub.leaflet.blocks.header" && typeof plaintext === "string") {
+        const level = typeof block.level === "number" ? block.level : 2
+        const headingLevel = Math.min(6, Math.max(2, Math.floor(level)))
+        children.push(
+          element(`h${headingLevel}`, {}, renderLeafletText(plaintext, block.facets, options)),
+        )
+      } else if (block?.$type === "pub.leaflet.blocks.code" && typeof plaintext === "string") {
+        children.push(element("pre", {}, [element("code", {}, [textNode(plaintext)])]))
       }
     }
   }
