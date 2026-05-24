@@ -16,45 +16,45 @@
   display: none;
 }
 
-@media all and (min-width: 801px) and (max-width: 1199px) {
-  .page > #quartz-body {
-    grid-template-columns: minmax(0, calc(100vw - #{$sidePanelWidth} - 2rem)) $sidePanelWidth;
-    grid-template-rows: auto auto;
-    grid-template-areas:
-      "grid-center grid-sidebar-right"
-      "grid-footer grid-sidebar-right";
-    column-gap: 0;
+// @media all and (min-width: 801px) and (max-width: 1199px) {
+//   .page > #quartz-body {
+//     grid-template-columns: minmax(0, calc(100vw - #{$sidePanelWidth} - 2rem)) $sidePanelWidth;
+//     grid-template-rows: auto auto;
+//     grid-template-areas:
+//       "grid-center grid-sidebar-right"
+//       "grid-footer grid-sidebar-right";
+//     column-gap: 0;
 
-    > .sidebar.left {
-      display: none;
-    }
+//     > .sidebar.left {
+//       display: none;
+//     }
 
-    > .sidebar.right {
-      position: sticky;
-      top: 0;
-      display: flex;
-      width: auto;
-      height: 100vh;
-      flex-direction: column;
-      padding: $topSpacing 2rem 2rem;
+//     > .sidebar.right {
+//       position: sticky;
+//       top: 0;
+//       display: flex;
+//       width: auto;
+//       height: 100vh;
+//       flex-direction: column;
+//       padding: calc($topSpacing + 0.6rem) 2rem 2rem;
 
-      > * {
-        flex: initial;
-        max-height: none;
-      }
+//       > * {
+//         flex: initial;
+//         max-height: none;
+//       }
 
-      > .toc {
-        display: initial;
-      }
-    }
-  }
-}
+//       > .toc {
+//         display: initial;
+//       }
+//     }
+//   }
+// }
 
 @media all and ($desktop) {
   body.pane-mode {
-    --note-column-width: clamp(28rem, 34vw, 38rem);
+    --note-column-width: clamp(30rem, 34vw, 38rem);
     --note-column-pad-x: 1.15rem;
-    --note-track-chrome-height: calc(#{$topSpacing} + 5.5rem);
+    --note-track-chrome-height: calc(#{$topSpacing} + 3.75rem);
     --note-track-left-gutter: clamp(10rem, 24vw, 24rem);
 
     overflow-x: hidden;
@@ -81,13 +81,41 @@
     .page > #quartz-body > .sidebar.right {
       z-index: 2;
       background: var(--light);
-      box-shadow: -18px 0 32px rgba(0, 0, 0, 0.08);
+
+      &::before {
+        content: "";
+        position: absolute;
+        top: var(--note-track-chrome-height);
+        bottom: 0;
+        left: 0;
+        width: 1px;
+        box-shadow: -18px 0 32px rgba(0, 0, 0, 0.08);
+        pointer-events: none;
+      }
+
+      > .flex-component {
+        min-height: 0;
+        flex: 1 1 auto;
+      }
+
+      > footer {
+        min-width: 0;
+        margin: auto 0 0;
+
+        p {
+          margin: 0 0 0.35rem;
+        }
+
+        ul {
+          margin-top: 0;
+        }
+      }
     }
 
     #note-track-shell {
       position: sticky;
       top: 0;
-      height: 90vh;
+      height: 100vh;
       min-width: 0;
 
       &::before {
@@ -105,15 +133,19 @@
 
     #note-track-chrome {
       position: absolute;
-      z-index: 3;
+      z-index: 4;
       top: 0;
       left: 0;
       right: 0;
       display: flex;
-      flex-direction: column;
-      gap: 0.35rem;
+      align-items: baseline;
+      column-gap: 0.9rem;
+      flex-wrap: wrap;
+      row-gap: 0.35rem;
       box-sizing: border-box;
-      padding: $topSpacing var(--note-column-pad-x) 0;
+      padding: $topSpacing var(--note-column-pad-x) 0.85rem;
+      background: var(--light);
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.055);
       pointer-events: none;
 
       .page-title,
@@ -122,16 +154,25 @@
       }
 
       .page-title {
+        flex: 0 0 auto;
         font-size: 1.75rem;
         margin: 0;
         font-family: var(--titleFont);
+        white-space: nowrap;
+      }
+
+      #note-path {
+        flex: 0 0 auto;
+        width: max-content;
+        max-width: 100%;
+        margin: 0;
       }
     }
 
     #note-column-track {
       display: flex;
       flex-direction: row-reverse;
-      height: 90vh;
+      height: 100vh;
       min-width: 0;
       box-sizing: border-box;
       padding-top: var(--note-track-chrome-height);
@@ -150,9 +191,8 @@
       > .note-column {
         flex: 0 0 var(--note-column-width);
         min-width: 0;
-        max-width: none;
-        margin-left: 0;
-        margin-right: 0;
+        max-width: 30rem;
+        margin: auto;
         height: 100%;
         box-sizing: border-box;
         overflow-y: auto;
@@ -250,9 +290,10 @@
 
     a {
       flex: 0 0 auto;
-      max-width: 11rem;
+      // max-width: 11rem;
       overflow: hidden;
       text-overflow: ellipsis;
+      white-space: nowrap;
       color: var(--secondary);
       font-size: 0.86rem;
       line-height: 1.35rem;
@@ -275,6 +316,7 @@
   .page > #quartz-body {
     .sidebar.right {
       align-items: stretch;
+      flex-wrap: wrap;
       padding: 0 0.4rem 0.8rem;
 
       .search {
@@ -301,6 +343,17 @@
         width: 100%;
         height: auto;
         aspect-ratio: 1 / 1;
+      }
+
+      footer {
+        flex: 0 0 100%;
+        max-height: none;
+        margin: 0.5rem auto 0;
+        text-align: center;
+
+        ul {
+          justify-content: center;
+        }
       }
     }
   }

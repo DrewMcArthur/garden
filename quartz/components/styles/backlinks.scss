@@ -30,12 +30,14 @@
     max-height: calc(100% - 2rem);
     overscroll-behavior: contain;
     display: flex;
+    flex-wrap: wrap;
     gap: 0.7rem;
 
     & > li.backlink-item {
       margin: 0;
       padding: 0;
       list-style: none;
+      width: 48%;
     }
 
     & > li > a.backlink-card {
@@ -99,9 +101,19 @@
 
 @media all and ($mobile) {
   .backlinks {
-    width: 80%;
+    width: 100%;
     max-width: 22rem;
     margin-left: auto;
     margin-right: auto;
+
+    & > ul.overflow {
+      flex-direction: column;
+      max-height: none;
+
+      & > li > a.backlink-card {
+        max-width: none;
+        height: auto;
+      }
+    }
   }
 }

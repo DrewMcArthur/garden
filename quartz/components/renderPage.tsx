@@ -254,6 +254,7 @@ export function renderPage(
       {right.map((BodyComponent) => (
         <BodyComponent {...componentData} />
       ))}
+      <Footer {...componentData} />
     </div>
   )
 
@@ -293,7 +294,6 @@ export function renderPage(
               </div>
             </div>
             {RightComponent}
-            <Footer {...componentData} />
           </Body>
         </div>
       </body>
