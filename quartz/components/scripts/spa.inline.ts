@@ -213,6 +213,27 @@ function getSiteTitleLink() {
   return link
 }
 
+let paneChromeResizeObserver: ResizeObserver | undefined
+function syncPaneChromeHeight() {
+  const chrome = document.getElementById("note-track-chrome")
+  if (!chrome || !document.body.classList.contains("pane-mode")) {
+    document.body.style.removeProperty("--note-track-chrome-height")
+    return
+  }
+
+  document.body.style.setProperty(
+    "--note-track-chrome-height",
+    `${Math.ceil(chrome.offsetHeight)}px`,
+  )
+}
+
+function observePaneChromeHeight(chrome: HTMLElement) {
+  paneChromeResizeObserver?.disconnect()
+  paneChromeResizeObserver = new ResizeObserver(syncPaneChromeHeight)
+  paneChromeResizeObserver.observe(chrome)
+  syncPaneChromeHeight()
+}
+
 async function renderNotePath(
   path = getOpenPath(),
   expanded = false,
@@ -223,6 +244,9 @@ async function renderNotePath(
   const chrome = document.getElementById("note-track-chrome")
   if (!inPaneMode) {
     chrome?.replaceChildren()
+    paneChromeResizeObserver?.disconnect()
+    paneChromeResizeObserver = undefined
+    syncPaneChromeHeight()
   }
 
   document.querySelectorAll<HTMLElement>(".breadcrumb-container").forEach((breadcrumb) => {
@@ -311,6 +335,7 @@ async function renderNotePath(
     siteTitle.className = "page-title note-site-title"
     siteTitle.appendChild(getSiteTitleLink())
     chrome.replaceChildren(siteTitle, nav)
+    observePaneChromeHeight(chrome)
     return
   }
 
