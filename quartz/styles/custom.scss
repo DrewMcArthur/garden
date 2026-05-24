@@ -16,43 +16,43 @@
   display: none;
 }
 
-@media all and (min-width: 801px) and (max-width: 1199px) {
-  .page > #quartz-body {
-    grid-template-columns: minmax(0, calc(100vw - #{$sidePanelWidth} - 2rem)) $sidePanelWidth;
-    grid-template-rows: auto auto;
-    grid-template-areas:
-      "grid-center grid-sidebar-right"
-      "grid-footer grid-sidebar-right";
-    column-gap: 0;
+// @media all and (min-width: 801px) and (max-width: 1199px) {
+//   .page > #quartz-body {
+//     grid-template-columns: minmax(0, calc(100vw - #{$sidePanelWidth} - 2rem)) $sidePanelWidth;
+//     grid-template-rows: auto auto;
+//     grid-template-areas:
+//       "grid-center grid-sidebar-right"
+//       "grid-footer grid-sidebar-right";
+//     column-gap: 0;
 
-    > .sidebar.left {
-      display: none;
-    }
+//     > .sidebar.left {
+//       display: none;
+//     }
 
-    > .sidebar.right {
-      position: sticky;
-      top: 0;
-      display: flex;
-      width: auto;
-      height: 100vh;
-      flex-direction: column;
-      padding: calc($topSpacing + 0.6rem) 2rem 2rem;
+//     > .sidebar.right {
+//       position: sticky;
+//       top: 0;
+//       display: flex;
+//       width: auto;
+//       height: 100vh;
+//       flex-direction: column;
+//       padding: calc($topSpacing + 0.6rem) 2rem 2rem;
 
-      > * {
-        flex: initial;
-        max-height: none;
-      }
+//       > * {
+//         flex: initial;
+//         max-height: none;
+//       }
 
-      > .toc {
-        display: initial;
-      }
-    }
-  }
-}
+//       > .toc {
+//         display: initial;
+//       }
+//     }
+//   }
+// }
 
 @media all and ($desktop) {
   body.pane-mode {
-    --note-column-width: clamp(28rem, 34vw, 38rem);
+    --note-column-width: clamp(30rem, 34vw, 38rem);
     --note-column-pad-x: 1.15rem;
     --note-track-chrome-height: calc(#{$topSpacing} + 3.75rem);
     --note-track-left-gutter: clamp(10rem, 24vw, 24rem);
@@ -191,9 +191,8 @@
       > .note-column {
         flex: 0 0 var(--note-column-width);
         min-width: 0;
-        max-width: none;
-        margin-left: 0;
-        margin-right: 0;
+        max-width: 30rem;
+        margin: auto;
         height: 100%;
         box-sizing: border-box;
         overflow-y: auto;

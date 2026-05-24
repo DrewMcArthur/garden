@@ -1,6 +1,6 @@
 import { QuartzComponent, QuartzComponentConstructor, QuartzComponentProps } from "./types"
 import { classNames } from "../util/lang"
-import { joinSegments, simplifySlug } from "../util/path"
+import { simplifySlug } from "../util/path"
 // @ts-ignore
 import copyAtUriScript from "./scripts/copyAtUri.inline"
 
@@ -9,7 +9,7 @@ const ArticleTitle: QuartzComponent = ({ fileData, cfg, displayClass }: QuartzCo
   const atprotoUri = fileData.atprotoUri
   const noteUrl =
     fileData.slug && cfg.baseUrl
-      ? `https://${joinSegments(cfg.baseUrl, encodeURI(simplifySlug(fileData.slug)))}`
+      ? `${encodeURI(simplifySlug(fileData.slug))}`
       : undefined
 
   if (title) {
