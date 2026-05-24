@@ -8,9 +8,7 @@ const ArticleTitle: QuartzComponent = ({ fileData, cfg, displayClass }: QuartzCo
   const title = fileData.frontmatter?.title
   const atprotoUri = fileData.atprotoUri
   const noteUrl =
-    fileData.slug && cfg.baseUrl
-      ? `${encodeURI(simplifySlug(fileData.slug))}`
-      : undefined
+    fileData.slug && cfg.baseUrl ? `${encodeURI(simplifySlug(fileData.slug))}` : undefined
 
   if (title) {
     return (
@@ -49,12 +47,9 @@ const ArticleTitle: QuartzComponent = ({ fileData, cfg, displayClass }: QuartzCo
           //   title="copy at:// uri"
           //   aria-label="copy at:// uri"
           // >
-          <a href={atprotoUri}>
-            @
-          </a>
-        )
-        }
-      </div >
+          <a href={atprotoUri}>@</a>
+        )}
+      </div>
     )
   } else {
     return null
