@@ -36,12 +36,12 @@ export const defaultContentPageLayout: PageLayout = {
           Component: Component.Search(),
           align: "stretch",
         },
-        {
-          Component: Component.DesktopOnly(Component.TableOfContents()),
-          grow: true,
-          align: "stretch",
-        },
-        { Component: Component.Graph(), grow: true, align: "stretch", justify: "end" },
+        // {
+        //   Component: Component.DesktopOnly(Component.TableOfContents()),
+        //   grow: true,
+        //   align: "stretch",
+        // },
+        { Component: Component.Graph(), grow: false, align: "stretch", justify: "end" },
       ],
     }),
   ],
