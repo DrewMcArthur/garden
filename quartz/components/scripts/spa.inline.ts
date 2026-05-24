@@ -52,8 +52,8 @@ const getPaneStack = (url: URL = new URL(window.location.toString())): FullSlug[
     .filter((slug) => slug.length > 0) as FullSlug[]
 }
 
-const getOpenPath = (baseSlug = getUrlBaseSlug()): FullSlug[] => {
-  return [baseSlug, ...getPaneStack()]
+const getOpenPath = (url: URL = new URL(window.location.toString())): FullSlug[] => {
+  return [...getPaneStack(url), getUrlBaseSlug(url)]
 }
 
 function notifyPaneChange(path = getOpenPath()) {
@@ -289,10 +289,10 @@ async function renderNotePath(
 
     const link = document.createElement("a")
     const trail = fullPath.slice(0, index + 1)
-    const url = urlFromSlug(trail[0])
-    const stack = trail.slice(1)
-    if (stack.length > 0) {
-      url.searchParams.set(paneStackParam, stack.join("|"))
+    const url = urlFromSlug(slug)
+    const previous = trail.slice(0, -1)
+    if (previous.length > 0) {
+      url.searchParams.set(paneStackParam, previous.join("|"))
     }
     link.href = url.pathname + url.search
     link.textContent = data[slug]?.title ?? (slug === "index" ? "Home" : slug)
@@ -377,7 +377,7 @@ async function renderActiveNote(slug: FullSlug) {
   if (!page) return
 
   await micromorph(center, page.center)
-  prepareNoteColumn(center, slug, getPaneStack().length - 1, true)
+  prepareNoteColumn(center, slug, getOpenPath().length - 1, true)
   document.body.dataset.slug = slug
 
   if (page.title) {
@@ -414,7 +414,7 @@ function scrollPathIndexIntoView(pathIndex: number) {
   if (!shouldUsePanes()) return false
 
   const column = document.querySelector<HTMLElement>(
-    `#note-column-track > .note-column[data-pane-index="${pathIndex - 1}"]`,
+    `#note-column-track > .note-column[data-pane-index="${pathIndex}"]`,
   )
   if (!column) return false
 
@@ -438,7 +438,7 @@ function getFocusedPathView(): { path: FullSlug[]; trailingCrumb?: TrailingCrumb
   const visibleRatios = new Map<number, number>()
 
   for (const column of columns) {
-    const pathIndex = Number(column.dataset.paneIndex) + 1
+    const pathIndex = Number(column.dataset.paneIndex)
     const rect = column.getBoundingClientRect()
     const visibleWidth = Math.max(
       0,
@@ -498,7 +498,7 @@ function bindNotePathToTrackScroll(track: HTMLElement) {
   }
 }
 
-async function renderNoteColumns(slugs = getPaneStack()) {
+async function renderNoteColumns(path = getOpenPath()) {
   const track = document.getElementById("note-column-track")
   const activeColumn = track?.querySelector<HTMLElement>(":scope > .note-column-active")
   if (!track || !activeColumn) return
@@ -509,37 +509,29 @@ async function renderNoteColumns(slugs = getPaneStack()) {
   if (!shouldUsePanes()) {
     unbindPathTrack?.()
     document.body.classList.remove("pane-mode")
-    const path = getOpenPath()
-    if (slugs.length > 0) {
-      await renderActiveNote(slugs[slugs.length - 1])
-    } else {
-      prepareNoteColumn(activeColumn, getUrlBaseSlug(), -1, true)
-    }
+    const activeSlug = path[path.length - 1] ?? getUrlBaseSlug()
+    await renderActiveNote(activeSlug)
 
     void renderNotePath(path)
     notifyPaneChange(path)
     return
   }
 
-  const baseSlug = getUrlBaseSlug()
-  const activeSlug = slugs[slugs.length - 1] ?? baseSlug
-  if (slugs.length > 0) {
+  const activeSlug = path[path.length - 1] ?? getUrlBaseSlug()
+  if (getFullSlug(window) !== activeSlug) {
     await renderActiveNote(activeSlug)
-  } else if (getFullSlug(window) !== baseSlug) {
-    await renderActiveNote(baseSlug)
   } else {
-    prepareNoteColumn(activeColumn, activeSlug, slugs.length - 1, true)
+    prepareNoteColumn(activeColumn, activeSlug, path.length - 1, true)
   }
 
-  const path = getOpenPath()
-  const previousPath = slugs.length > 0 ? path.slice(0, -1) : []
+  const previousPath = path.slice(0, -1)
   document.body.classList.add("pane-mode")
 
   const previousColumns = previousPath.map((slug, index) => ({ index, slug })).reverse()
 
   for (const { index, slug } of previousColumns) {
     const loadingColumn = document.createElement("div")
-    prepareNoteColumn(loadingColumn, slug, index - 1, false)
+    prepareNoteColumn(loadingColumn, slug, index, false)
     loadingColumn.setAttribute("aria-label", `Linked note ${index + 1}`)
     loadingColumn.innerHTML = `<div class="note-column-loading">Loading...</div>`
     track.appendChild(loadingColumn)
@@ -553,7 +545,7 @@ async function renderNoteColumns(slugs = getPaneStack()) {
     }
 
     const centerClone = page.center.cloneNode(true) as HTMLElement
-    prepareNoteColumn(centerClone, slug, index - 1, false)
+    prepareNoteColumn(centerClone, slug, index, false)
     centerClone.querySelectorAll<HTMLElement>(".breadcrumb-container").forEach((breadcrumb) => {
       breadcrumb.hidden = true
     })
@@ -567,10 +559,14 @@ async function renderNoteColumns(slugs = getPaneStack()) {
   notifyPaneChange(path)
 }
 
-function setPaneStack(slugs: FullSlug[], replace = false) {
+function setOpenPath(path: FullSlug[], replace = false) {
+  const activeSlug = path[path.length - 1] ?? "index"
+  const previousPath = path.slice(0, -1)
   const nextUrl = new URL(window.location.toString())
-  if (slugs.length > 0) {
-    nextUrl.searchParams.set(paneStackParam, slugs.join("|"))
+  nextUrl.pathname = urlFromSlug(activeSlug).pathname
+  nextUrl.hash = ""
+  if (previousPath.length > 0) {
+    nextUrl.searchParams.set(paneStackParam, previousPath.join("|"))
   } else {
     nextUrl.searchParams.delete(paneStackParam)
   }
@@ -578,24 +574,23 @@ function setPaneStack(slugs: FullSlug[], replace = false) {
   if (nextUrl.toString() === window.location.toString()) return
 
   history[replace ? "replaceState" : "pushState"]({}, "", nextUrl)
-  void renderNoteColumns(slugs)
+  void renderNoteColumns(path)
 }
 
 function openPane(url: URL, paneIndex?: number) {
-  const stack = getPaneStack()
   const slug = slugFromUrl(url)
   const openPath = getOpenPath()
   const existingIndex = openPath.lastIndexOf(slug)
   if (existingIndex !== -1) {
     if (scrollPathIndexIntoView(existingIndex)) return
 
-    setPaneStack(openPath.slice(1, existingIndex + 1))
+    setOpenPath(openPath.slice(0, existingIndex + 1))
     return
   }
 
   const nextStack =
-    paneIndex === undefined ? [...stack, slug] : [...stack.slice(0, paneIndex + 1), slug]
-  setPaneStack(nextStack)
+    paneIndex === undefined ? [...openPath, slug] : [...openPath.slice(0, paneIndex + 1), slug]
+  setOpenPath(nextStack)
 }
 
 window.spaOpenPane = (url: URL) => openPane(url)
@@ -633,7 +628,7 @@ function createRouter() {
       if (window.location.hash && window.location.pathname === url?.pathname) return
       const nextUrl = new URL(window.location.toString())
       if (slugFromUrl(nextUrl) === getFullSlug(window)) {
-        void renderNoteColumns(getPaneStack(nextUrl))
+        void renderNoteColumns(getOpenPath(nextUrl))
         return
       }
       navigate(nextUrl, true)
