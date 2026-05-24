@@ -17,13 +17,14 @@ const ArticleTitle: QuartzComponent = ({ fileData, cfg, displayClass }: QuartzCo
       <div class={classNames(displayClass, "article-title-row")}>
         <h1 class="article-title">{title}</h1>
         {noteUrl && (
-          <button
-            class="copy-title-link-btn"
-            type="button"
-            data-copy-note-url={noteUrl}
-            title="copy direct note link"
-            aria-label="copy direct note link"
-          >
+          // <button
+          //   class="copy-title-link-btn"
+          //   type="button"
+          //   data-copy-note-url={noteUrl}
+          //   title="copy direct note link"
+          //   aria-label="copy direct note link"
+          // >
+          <a href={noteUrl} style="margin-bottom: .1rem;">
             <svg
               aria-hidden="true"
               width="18"
@@ -38,20 +39,22 @@ const ArticleTitle: QuartzComponent = ({ fileData, cfg, displayClass }: QuartzCo
               <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
               <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
             </svg>
-          </button>
+          </a>
         )}
-        {atprotoUri && (
-          <button
-            class="copy-title-link-btn copy-at-uri-btn"
-            type="button"
-            data-copy-at-uri={atprotoUri}
-            title="copy at:// uri"
-            aria-label="copy at:// uri"
-          >
+        {atprotoUri && false && (
+          // <button
+          //   class="copy-title-link-btn copy-at-uri-btn"
+          //   type="button"
+          //   data-copy-at-uri={atprotoUri}
+          //   title="copy at:// uri"
+          //   aria-label="copy at:// uri"
+          // >
+          <a href={atprotoUri}>
             @
-          </button>
-        )}
-      </div>
+          </a>
+        )
+        }
+      </div >
     )
   } else {
     return null
@@ -64,7 +67,7 @@ ArticleTitle.css = `
   display: flex;
   flex-wrap: wrap;
   gap: 0.55rem 0.8rem;
-  align-items: center;
+  align-items: end;
 }
 
 .article-title-row > .article-title {
