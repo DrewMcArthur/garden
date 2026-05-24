@@ -1,6 +1,7 @@
 ---
 publish: true
 rkey: 3mlzmzbuedt2c
+slug: thoughts-ai-cant-survive-capitalism
 ---
 
 I recently read this four-part blog post on [New Consensus](https://newconsensus.com) titled [Why Capitalism Can't Survive AI](https://www.newconsensus.com/blog/series/why-capitalism-cant-survive-ai). Overall a great piece, but it could go further!
