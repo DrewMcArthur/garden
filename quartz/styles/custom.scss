@@ -81,7 +81,17 @@
     .page > #quartz-body > .sidebar.right {
       z-index: 2;
       background: var(--light);
-      box-shadow: -18px 0 32px rgba(0, 0, 0, 0.08);
+
+      &::before {
+        content: "";
+        position: absolute;
+        top: var(--note-track-chrome-height);
+        bottom: 0;
+        left: 0;
+        width: 1px;
+        box-shadow: -18px 0 32px rgba(0, 0, 0, 0.08);
+        pointer-events: none;
+      }
     }
 
     #note-track-shell {
@@ -203,6 +213,12 @@
       padding: 0.7rem 1rem 0.65rem;
       background: var(--light);
       box-shadow: 0 -10px 24px rgba(0, 0, 0, 0.055);
+      border-radius: 8px;
+      opacity: 0.5;
+      transition: 0.3s opacity;
+      &:hover {
+        opacity: 1;
+      }
 
       p {
         margin: 0 0 0.35rem;
@@ -286,7 +302,7 @@
 
     a {
       flex: 0 0 auto;
-      max-width: 11rem;
+      // max-width: 11rem;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
