@@ -2,6 +2,8 @@
 publish: true
 rkey: 3mlzmzbpkuf2j
 ---
+## 2026.06.17
+Began some notes on [[Cooperative Franchising]]
 
 ## 2026.05.17
 

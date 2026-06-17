@@ -1,0 +1,1 @@
+a [[cooperative]] owned by its workers.
