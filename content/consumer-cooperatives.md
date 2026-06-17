@@ -1,1 +1,4 @@
+---
+publish: true
+---
 a [[cooperative]] owned by the business's consumers.  for example REI, or the [park slope food coop](https://www.foodcoop.com).

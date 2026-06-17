@@ -1,3 +1,7 @@
+---
+publish: true
+rkey: 3moig725fwd2q
+---
 A cooperative franchise is exactly what it sounds like: a combination of a [[cooperative]] and a [[franchise]]. 
 
 Cooperatives are a formation, either within a business or between businesses, where participants govern the entity cooperatively.  Examples include [[worker-cooperatives]], [[consumer-cooperatives]], [[purchaser-cooperatives]], and [[multi-stakeholder cooperatives]].  Cooperatives are all examples of [[social ownership]], which exists in contrast to private ownership.  As a result, cooperatives are often more sensitive to their local communities, more resilient to economic shocks, and better places to work on a number of metrics. Despite these advantages, the cooperative economy struggles with expansion largely due to a lack of capital investment. 
