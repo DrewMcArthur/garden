@@ -10,7 +10,7 @@ Began some notes on [[Cooperative Franchising]]
 Added:
 
 - a pane-like UI on desktop, inspired by [notes.andymatuschak.org](https://notes.andymatuschak.org)
-- [[Thoughts on "Why AI can't survive Capitalism"]].
+- [[Thoughts on "Why Capitalism can't survive AI"]].
 
 ## 2026.05.06
 
