@@ -16,4 +16,4 @@ The solution here is reminiscent of [Bates' Gedanken on Property Rights](https:/
 
 This combination seems to be the best of both worlds, leveraging the scalability of franchises with the egalitarian nature of cooperatives.  So why aren't there more examples of this in the wild?
 
-I'll expand this post at another time with further exploration of the roadblocks facing other iterations of this model from cropping up, and what could be done to mitigate that.  I'll also need to continue reading Geertz' [[Design of a Worker Cooperatives Society]], since cooperative franchising feels like a step in that direction.
+I'll expand on this at another time with further exploration of the roadblocks facing other iterations of this model from cropping up, and what could be done to mitigate that.  I'll also need to continue reading Geertz' [[Design of a Worker Cooperatives Society]], since cooperative franchising feels like a step in that direction.
