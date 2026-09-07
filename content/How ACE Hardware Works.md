@@ -1,5 +1,6 @@
 ---
 publish: true
+rkey: 3muvc7hy74i2n
 ---
 ACE Hardware, on the outside looks like your typical franchise.  Locally owned, but a national brand.  Similar stock on the shelves, clearly some national entity that handles the branding, supply chain, etc.  But this one weird trick^(tm) turns the franchise model on its head.
 
